@@ -1,6 +1,6 @@
 fastapi
-uvicorn
-google-cloud-aiplatform
-google-auth
+uvicorn[standard]
 httpx
+google-auth
+google-cloud-storage
 pydantic
