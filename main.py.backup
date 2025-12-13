@@ -1,0 +1,146 @@
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import vertexai
+from vertexai.preview.vision_models import ImageGenerationModel
+import os
+import base64
+import httpx
+import google.auth
+import google.auth.transport.requests
+
+app = FastAPI(title="GenMedia API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+PROJECT_ID = os.environ.get("PROJECT_ID", "remarkablenotion")
+LOCATION = os.environ.get("LOCATION", "us-central1")
+vertexai.init(project=PROJECT_ID, location=LOCATION)
+
+class ImageRequest(BaseModel):
+    prompt: str
+    num_images: int = 1
+
+class VideoRequest(BaseModel):
+    prompt: str
+
+class StatusRequest(BaseModel):
+    operation_name: str
+
+class ImageResponse(BaseModel):
+    images: list[str]
+
+class VideoResponse(BaseModel):
+    status: str
+    operation_name: str = None
+    video_base64: str = None
+    error: str = None
+
+def get_auth_headers():
+    credentials, project = google.auth.default()
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+    return {
+        "Authorization": f"Bearer {credentials.token}",
+        "Content-Type": "application/json"
+    }
+
+@app.get("/")
+def health():
+    return {"status": "ok", "project": PROJECT_ID}
+
+@app.post("/generate/image", response_model=ImageResponse)
+async def generate_image(request: ImageRequest):
+    try:
+        model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-002")
+        images = model.generate_images(
+            prompt=request.prompt,
+            number_of_images=request.num_images,
+        )
+        base64_images = []
+        for img in images:
+            base64_images.append(base64.b64encode(img._image_bytes).decode('utf-8'))
+        return ImageResponse(images=base64_images)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate/video")
+async def generate_video(request: VideoRequest):
+    try:
+        endpoint = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-2.0-generate-001:predictLongRunning"
+        
+        payload = {
+            "instances": [{"prompt": request.prompt}],
+            "parameters": {"aspectRatio": "16:9", "sampleCount": 1}
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(endpoint, json=payload, headers=get_auth_headers(), timeout=60.0)
+            
+        if response.status_code == 200:
+            result = response.json()
+            return {
+                "status": "processing",
+                "operation_name": result.get("name", "")
+            }
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/video/status")
+async def check_video_status(request: StatusRequest):
+    try:
+        operation_name = request.operation_name
+        endpoint = f"https://{LOCATION}-aiplatform.googleapis.com/v1/{operation_name}"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(endpoint, headers=get_auth_headers(), timeout=30.0)
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            # Check if done
+            if result.get("done"):
+                # Check for error
+                if "error" in result:
+                    return {
+                        "status": "error",
+                        "error": result["error"].get("message", "Unknown error")
+                    }
+                
+                # Get video from response
+                video_response = result.get("response", {})
+                videos = video_response.get("videos", [])
+                
+                if videos and len(videos) > 0:
+                    # Check for videoBytes (base64) or storageUri
+                    video = videos[0]
+                    if "videoBytes" in video:
+                        return {
+                            "status": "complete",
+                            "video_base64": video["videoBytes"]
+                        }
+                    elif "storageUri" in video:
+                        return {
+                            "status": "complete",
+                            "storage_uri": video["storageUri"]
+                        }
+                
+                return {"status": "complete", "video_base64": None}
+            else:
+                return {"status": "processing"}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
