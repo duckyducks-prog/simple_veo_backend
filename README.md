@@ -121,3 +121,4 @@ The backend calls Vertex AI and uses application default credentials. Ensure the
 If you want, I can:
 - add example Postman collection
 - add a small smoke-test script that hits `/generate/image` and `/generate/text`
+# simple_veo_backend
