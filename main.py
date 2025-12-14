@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -11,6 +11,8 @@ from google.cloud import storage
 from datetime import datetime
 import uuid
 import json
+import firebase_admin
+from firebase_admin import auth as firebase_auth
 
 app = FastAPI(title="GenMedia API")
 
@@ -25,9 +27,16 @@ app.add_middleware(
 PROJECT_ID = os.environ.get("PROJECT_ID", "remarkablenotion")
 LOCATION = os.environ.get("LOCATION", "us-central1")
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "genmedia-assets-remarkablenotion")
+FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "genmediastudio")
 
 # Allowed users whitelist (can also be set via ALLOWED_EMAILS env var, comma-separated)
 ALLOWED_EMAILS = os.environ.get("ALLOWED_EMAILS", "ldebortolialves@hubspot.com").split(",")
+
+# Initialize Firebase Admin SDK
+try:
+    firebase_admin.initialize_app()
+except ValueError:
+    pass  # Already initialized
 
 # Models
 GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview"  # Gemini 3 Pro Image (Nano Banana Pro)
@@ -150,12 +159,41 @@ def check_user_allowed(user_email: Optional[str]) -> bool:
     return user_email.lower().strip() in [e.lower().strip() for e in ALLOWED_EMAILS]
 
 
+def verify_firebase_token(token: Optional[str]) -> dict:
+    """
+    Verify Firebase ID token and return user info.
+    Returns dict with 'uid' and 'email' if valid.
+    Raises HTTPException if invalid.
+    """
+    if not token:
+        raise HTTPException(status_code=401, detail="No authorization token provided")
+    
+    # Remove 'Bearer ' prefix if present
+    if token.startswith("Bearer "):
+        token = token[7:]
+    
+    try:
+        decoded_token = firebase_auth.verify_id_token(token)
+        user_email = decoded_token.get("email", "").lower().strip()
+        user_id = decoded_token.get("uid")
+        
+        # Check whitelist
+        if user_email not in [e.lower().strip() for e in ALLOWED_EMAILS]:
+            raise HTTPException(status_code=403, detail="Access denied. User not authorized.")
+        
+        return {"uid": user_id, "email": user_email}
+    except firebase_admin.exceptions.FirebaseError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
+
+
 @app.post("/generate/image", response_model=ImageResponse)
-async def generate_image(request: ImageRequest):
+async def generate_image(request: ImageRequest, authorization: Optional[str] = Header(None)):
     """Generate images using Gemini 3 Pro Image (global endpoint required)"""
-    # Check whitelist
-    if not check_user_allowed(request.user_email):
-        raise HTTPException(status_code=403, detail="Access denied. User not authorized.")
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    user_id = user_info["uid"]
     
     try:
         # Gemini 3 Pro Image requires GLOBAL endpoint
@@ -209,11 +247,8 @@ async def generate_image(request: ImageRequest):
                         asset_id = str(uuid.uuid4())
                         timestamp = datetime.utcnow().isoformat() + "Z"
                         
-                        # Use user-specific path if user_id provided
-                        if request.user_id:
-                            blob_path = f"users/{request.user_id}/images/{asset_id}.png"
-                        else:
-                            blob_path = f"images/{asset_id}.png"
+                        # Use user-specific path with verified user_id
+                        blob_path = f"users/{user_id}/images/{asset_id}.png"
                         
                         file_bytes = base64.b64decode(img_data)
                         bucket = gcs_client.bucket(GCS_BUCKET)
@@ -228,7 +263,7 @@ async def generate_image(request: ImageRequest):
                             "created_at": timestamp,
                             "mime_type": "image/png",
                             "blob_path": blob_path,
-                            "user_id": request.user_id
+                            "user_id": user_id
                         }
                         meta_blob = bucket.blob(f"metadata/{asset_id}.json")
                         meta_blob.upload_from_string(json.dumps(metadata), content_type="application/json")
@@ -246,11 +281,11 @@ async def generate_image(request: ImageRequest):
 
 
 @app.post("/generate/video")
-async def generate_video(request: VideoRequest):
+async def generate_video(request: VideoRequest, authorization: Optional[str] = Header(None)):
     """Generate video using Veo 3.1 (regional endpoint)"""
-    # Check whitelist
-    if not check_user_allowed(request.user_email):
-        raise HTTPException(status_code=403, detail="Access denied. User not authorized.")
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    user_id = user_info["uid"]
     
     try:
         endpoint = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{VEO_MODEL}:predictLongRunning"
@@ -317,8 +352,12 @@ async def generate_video(request: VideoRequest):
 
 
 @app.post("/video/status")
-async def check_video_status(request: StatusRequest):
+async def check_video_status(request: StatusRequest, authorization: Optional[str] = Header(None)):
     """Check video generation status"""
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    user_id = user_info["uid"]
+    
     try:
         operation_name = request.operation_name
         endpoint = f"https://{LOCATION}-aiplatform.googleapis.com/v1/{operation_name}"
@@ -346,11 +385,8 @@ async def check_video_status(request: StatusRequest):
                                 asset_id = str(uuid.uuid4())
                                 timestamp = datetime.utcnow().isoformat() + "Z"
                                 
-                                # Use user-specific path if user_id provided
-                                if request.user_id:
-                                    blob_path = f"users/{request.user_id}/videos/{asset_id}.mp4"
-                                else:
-                                    blob_path = f"videos/{asset_id}.mp4"
+                                # Use user-specific path with verified user_id
+                                blob_path = f"users/{user_id}/videos/{asset_id}.mp4"
                                 
                                 file_bytes = base64.b64decode(video_base64)
                                 bucket = gcs_client.bucket(GCS_BUCKET)
@@ -365,7 +401,7 @@ async def check_video_status(request: StatusRequest):
                                     "created_at": timestamp,
                                     "mime_type": "video/mp4",
                                     "blob_path": blob_path,
-                                    "user_id": request.user_id
+                                    "user_id": user_id
                                 }
                                 meta_blob = bucket.blob(f"metadata/{asset_id}.json")
                                 meta_blob.upload_from_string(json.dumps(metadata), content_type="application/json")
@@ -631,8 +667,12 @@ async def save_asset(request: SaveAssetRequest):
 
 
 @app.get("/library")
-async def list_assets(asset_type: Optional[str] = None, user_id: Optional[str] = None, limit: int = 50):
-    """List assets in the library, optionally filtered by user"""
+async def list_assets(asset_type: Optional[str] = None, limit: int = 50, authorization: Optional[str] = Header(None)):
+    """List assets in the library for the authenticated user"""
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    user_id = user_info["uid"]
+    
     try:
         bucket = gcs_client.bucket(GCS_BUCKET)
         blobs = bucket.list_blobs(prefix="metadata/")
@@ -644,8 +684,8 @@ async def list_assets(asset_type: Optional[str] = None, user_id: Optional[str] =
                 
             metadata = json.loads(blob.download_as_string())
             
-            # Filter by user_id if specified
-            if user_id and metadata.get("user_id") != user_id:
+            # Filter by verified user_id
+            if metadata.get("user_id") != user_id:
                 continue
             
             # Filter by asset_type if specified
@@ -695,8 +735,12 @@ async def get_asset(asset_id: str):
 
 
 @app.delete("/library/{asset_id}")
-async def delete_asset(asset_id: str):
-    """Delete an asset from the library"""
+async def delete_asset(asset_id: str, authorization: Optional[str] = Header(None)):
+    """Delete an asset from the library (only owner can delete)"""
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    user_id = user_info["uid"]
+    
     try:
         bucket = gcs_client.bucket(GCS_BUCKET)
         meta_blob = bucket.blob(f"metadata/{asset_id}.json")
@@ -706,6 +750,10 @@ async def delete_asset(asset_id: str):
         
         # Get metadata to find the asset blob
         metadata = json.loads(meta_blob.download_as_string())
+        
+        # Check ownership
+        if metadata.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied. You can only delete your own assets.")
         
         # Delete the asset file
         asset_blob = bucket.blob(metadata["blob_path"])

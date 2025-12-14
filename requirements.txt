@@ -4,3 +4,4 @@ httpx
 google-auth
 google-cloud-storage
 pydantic
+firebase-admin
