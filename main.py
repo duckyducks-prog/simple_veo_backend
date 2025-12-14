@@ -798,38 +798,8 @@ async def delete_asset(asset_id: str, authorization: Optional[str] = Header(None
 
 
 if __name__ == "__main__":
-    # Development runner that prefers `uv`/`uvicorn` from a local virtualenv (.venv).
-    # If the venv doesn't exist, create it and prompt to install dependencies
-    # via `./run.sh` (created in the repo). This keeps behavior explicit and
-    # reproducible for local dev while Cloud Run / Docker should use the
-    # container entrypoint instead.
-    import shutil
-    import venv
-
-    venv_dir = ".venv"
-    if not os.path.isdir(venv_dir):
-        print("Creating virtual environment in .venv")
-        venv.create(venv_dir, with_pip=True)
-        print("Virtual environment created. Run './run.sh' to install requirements into the venv.")
-        # After creating venv we exit so the user can install packages first.
-        raise SystemExit(0)
-
-    # Prepend venv bin to PATH so that `uv`/`uvicorn` installed into the venv is preferred.
-    bin_dir = os.path.join(venv_dir, "bin")
-    os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
-
-    # Prefer `uv` (if you have a short alias/entry), fall back to `uvicorn`.
-    preferred = None
-    for cmd in ("uv", "uvicorn"):
-        if shutil.which(cmd):
-            preferred = cmd
-            break
-
-    port = os.environ.get("PORT", "8080")
-    if preferred:
-        print(f"Starting {preferred} on 0.0.0.0:{port} (from {bin_dir})")
-        os.execvp(preferred, [preferred, "main:app", "--host", "0.0.0.0", "--port", str(port), "--reload"])  # replaces process
-    else:
-        print("uv/uvicorn not found in .venv. Run './run.sh' to install requirements. Falling back to programmatic uvicorn.")
-        import uvicorn
-        uvicorn.run("main:app", host="0.0.0.0", port=int(port), log_level="info")
+    # Local runner for development. Cloud Run / Docker should use an external
+    # server (uvicorn/gunicorn) or the Dockerfile entrypoint instead.
+    import uvicorn
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, log_level="info")
