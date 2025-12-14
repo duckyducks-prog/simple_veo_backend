@@ -81,6 +81,27 @@ class TestVerifyFirebaseToken:
         result = verify_firebase_token("Bearer token")
         assert result["email"] == "ldebortolialves@hubspot.com"
 
+    @patch("app.auth.firebase_auth.verify_id_token")
+    @patch("app.auth.init_firebase")
+    def test_firebase_error_raises_401(self, mock_init, mock_verify):
+        """Verification error returns 401"""
+        mock_verify.side_effect = ValueError("Token validation failed")
+        
+        with pytest.raises(HTTPException) as exc:
+            verify_firebase_token("Bearer invalid-token")
+        assert exc.value.status_code == 401
+
+    @patch("app.auth.firebase_auth.verify_id_token")
+    @patch("app.auth.init_firebase")
+    def test_unexpected_error_raises_401(self, mock_init, mock_verify):
+        """Unexpected error returns 401"""
+        mock_verify.side_effect = RuntimeError("Unexpected error")
+        
+        with pytest.raises(HTTPException) as exc:
+            verify_firebase_token("Bearer token")
+        assert exc.value.status_code == 401
+        assert "Token verification failed" in exc.value.detail
+
 
 class TestGetCurrentUser:
     @pytest.mark.asyncio

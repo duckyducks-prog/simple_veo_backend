@@ -9,8 +9,9 @@ def mock_library_service():
 
 class TestGenerateImage:
     @pytest.mark.asyncio
+    @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
-    async def test_successful_generation(self, mock_genai_client, mock_library_service):
+    async def test_successful_generation(self, mock_genai_client, mock_image_client, mock_library_service):
         """Successful image generation returns images"""
         mock_part = MagicMock()
         mock_part.inline_data = MagicMock()
@@ -21,7 +22,7 @@ class TestGenerateImage:
         
         mock_response = MagicMock()
         mock_response.candidates = [mock_candidate]
-        mock_genai_client.models.generate_content.return_value = mock_response
+        mock_image_client.models.generate_content.return_value = mock_response
         
         from app.services.generation import GenerationService
         service = GenerationService(library_service=mock_library_service)
@@ -32,22 +33,22 @@ class TestGenerateImage:
         mock_library_service.save_asset.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
-    async def test_no_images_raises(self, mock_genai_client, mock_library_service):
+    async def test_no_images_raises(self, mock_genai_client, mock_image_client, mock_library_service):
         """No images in response raises exception"""
         mock_candidate = MagicMock()
         mock_candidate.content.parts = []
         
         mock_response = MagicMock()
         mock_response.candidates = [mock_candidate]
-        mock_genai_client.models.generate_content.return_value = mock_response
+        mock_image_client.models.generate_content.return_value = mock_response
         
         from app.services.generation import GenerationService
         service = GenerationService(library_service=mock_library_service)
         
         with pytest.raises(Exception, match="No images generated"):
             await service.generate_image(prompt="a puppy", user_id="user-123")
-
 
 class TestGenerateText:
     @pytest.mark.asyncio
@@ -131,3 +132,33 @@ class TestUpscaleImage:
         
         assert result.image == "upscaled-image-data"
         assert result.mime_type == "image/png"
+
+
+class TestLibrarySaveErrors:
+    @pytest.mark.asyncio
+    @patch("app.services.generation.image_client")
+    @patch("app.services.generation.client")
+    async def test_save_to_library_failure_logged(self, mock_genai_client, mock_image_client, mock_library_service):
+        """Failed library save is logged but doesn't crash generation"""
+        mock_part = MagicMock()
+        mock_part.inline_data = MagicMock()
+        mock_part.inline_data.data = b"fake_image_bytes"
+        
+        mock_candidate = MagicMock()
+        mock_candidate.content.parts = [mock_part]
+        
+        mock_response = MagicMock()
+        mock_response.candidates = [mock_candidate]
+        mock_image_client.models.generate_content.return_value = mock_response
+        
+        # Make library save fail
+        mock_library_service.save_asset.side_effect = Exception("Storage error")
+        
+        from app.services.generation import GenerationService
+        service = GenerationService(library_service=mock_library_service)
+        
+        # Should still return images even if save fails
+        result = await service.generate_image(prompt="a puppy", user_id="user-123")
+        
+        assert len(result.images) == 1
+        mock_library_service.save_asset.assert_called_once()

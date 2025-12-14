@@ -279,7 +279,16 @@ Log levels:
 
 ## 🚢 Deployment
 
-### Deploy to Google Cloud Run
+### Quick Deploy with Script
+
+```bash
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
+```
+
+This automated script handles the full deployment to Google Cloud Run.
+
+### Manual Deploy to Google Cloud Run
 
 ```bash
 gcloud run deploy veo-api \

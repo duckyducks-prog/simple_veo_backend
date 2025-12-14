@@ -11,21 +11,24 @@ class TestImageGenerationAPI:
         assert response.status_code == 401
         assert "No authorization token" in response.json()["detail"]
     
+    @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
     @patch("app.services.library.storage.Client")
-    def test_requires_prompt(self, mock_storage, mock_genai_client, client, mock_auth, mock_gcs_client):
+    def test_requires_prompt(self, mock_storage, mock_genai_client, mock_image_client, client, mock_auth, mock_gcs_client):
         """Request without prompt returns 422"""
         mock_storage.return_value = mock_gcs_client
         
         response = client.post("/generate/image", json={})
         assert response.status_code == 422
     
+    @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
     @patch("app.services.library.storage.Client")
     def test_successful_generation(
         self, 
         mock_storage, 
         mock_genai_client,
+        mock_image_client,
         client, 
         mock_auth,
         mock_gcs_client
@@ -33,7 +36,6 @@ class TestImageGenerationAPI:
         """Full successful image generation flow"""
         mock_storage.return_value = mock_gcs_client
         
-        # Mock response with image data
         mock_part = MagicMock()
         mock_part.inline_data = MagicMock()
         mock_part.inline_data.data = b"fake_image_bytes"
@@ -43,7 +45,7 @@ class TestImageGenerationAPI:
         
         mock_response = MagicMock()
         mock_response.candidates = [mock_candidate]
-        mock_genai_client.models.generate_content.return_value = mock_response
+        mock_image_client.models.generate_content.return_value = mock_response
         
         response = client.post("/generate/image", json={
             "prompt": "a cute puppy",
@@ -55,12 +57,14 @@ class TestImageGenerationAPI:
         assert "images" in data
         assert len(data["images"]) == 1
     
+    @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
     @patch("app.services.library.storage.Client")
     def test_with_reference_images(
         self,
         mock_storage,
         mock_genai_client,
+        mock_image_client,
         client,
         mock_auth,
         mock_gcs_client
@@ -77,7 +81,7 @@ class TestImageGenerationAPI:
         
         mock_response = MagicMock()
         mock_response.candidates = [mock_candidate]
-        mock_genai_client.models.generate_content.return_value = mock_response
+        mock_image_client.models.generate_content.return_value = mock_response
         
         ref_image = base64.b64encode(b"reference image").decode()
         
@@ -88,12 +92,14 @@ class TestImageGenerationAPI:
         
         assert response.status_code == 200
     
+    @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
     @patch("app.services.library.storage.Client")
     def test_no_images_returns_500(
         self,
         mock_storage,
         mock_genai_client,
+        mock_image_client,
         client,
         mock_auth,
         mock_gcs_client
@@ -101,19 +107,17 @@ class TestImageGenerationAPI:
         """No images generated returns 500"""
         mock_storage.return_value = mock_gcs_client
         
-        # Mock empty response
         mock_candidate = MagicMock()
         mock_candidate.content.parts = []
         
         mock_response = MagicMock()
         mock_response.candidates = [mock_candidate]
-        mock_genai_client.models.generate_content.return_value = mock_response
+        mock_image_client.models.generate_content.return_value = mock_response
         
         response = client.post("/generate/image", json={"prompt": "test"})
         
         assert response.status_code == 500
         assert "No images generated" in response.json()["detail"]
-
 
 class TestVideoGenerationAPI:
     """Integration tests for /generate/video endpoint"""

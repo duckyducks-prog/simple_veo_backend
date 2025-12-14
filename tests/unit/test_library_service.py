@@ -214,3 +214,33 @@ class TestDeleteAsset:
         
         with pytest.raises(ValueError, match="Asset not found"):
             await library_service.delete_asset(asset_id="fake-id", user_id="user-123")
+
+    @pytest.mark.asyncio
+    async def test_get_asset_not_found(self, library_service, mock_gcs_client):
+        """Getting nonexistent asset raises ValueError"""
+        _, bucket = mock_gcs_client
+        
+        meta_blob = MagicMock()
+        meta_blob.exists.return_value = False
+        bucket.blob.return_value = meta_blob
+        
+        with pytest.raises(ValueError, match="Asset not found"):
+            await library_service.get_asset(asset_id="fake-id", user_id="user-123")
+
+    @pytest.mark.asyncio
+    async def test_get_asset_permission_denied(self, library_service, mock_gcs_client):
+        """Getting another user's asset raises PermissionError"""
+        _, bucket = mock_gcs_client
+        
+        meta_blob = MagicMock()
+        meta_blob.exists.return_value = True
+        meta_blob.download_as_string.return_value = json.dumps({
+            "id": "asset-1",
+            "user_id": "other-user",
+            "blob_path": "users/other-user/images/asset-1.png"
+        }).encode()
+        
+        bucket.blob.return_value = meta_blob
+        
+        with pytest.raises(PermissionError, match="Access denied"):
+            await library_service.get_asset(asset_id="asset-1", user_id="user-123")
