@@ -36,7 +36,8 @@ def verify_firebase_token(authorization: Optional[str] = None) -> dict:
     
     try:
         decoded_token = firebase_auth.verify_id_token(token)
-        user_email = decoded_token.get("email", "").lower().strip()
+        user_email = decoded_token.get("email") or decoded_token.get("claims", {}).get("email") or ""
+        user_email = user_email.lower().strip()
         user_id = decoded_token.get("uid")
         
         # Check whitelist
