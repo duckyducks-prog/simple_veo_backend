@@ -1,6 +1,10 @@
-venv/
+# Python-generated files
 __pycache__/
-*.pyc
-.env
-google-cloud-sdk
-exec -l 
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
