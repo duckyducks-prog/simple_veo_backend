@@ -1,11 +1,17 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import ClassVar
 
 class Settings(BaseSettings):
     project_id: str = "remarkablenotion"
     location: str = "us-central1"
     gcs_bucket: str = "genmedia-assets-remarkablenotion"
     firebase_project_id: str = "genmediastudio"
-    allowed_emails: list[str] = ["ldebortolialves@hubspot.com", "meganzinka@gmail.com"]
+    
+    # Hardcoded, not from env
+    ALLOWED_EMAILS: ClassVar[list[str]] = [
+        "ldebortolialves@hubspot.com",
+        "meganzinka@gmail.com"
+    ]
     
     # Firebase config (for testing)
     firebase_api_key: str = ""
@@ -20,7 +26,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore"  # Or add this to ignore unknown env vars
+        extra="ignore"
     )
 
 settings = Settings()

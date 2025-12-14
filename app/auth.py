@@ -47,7 +47,7 @@ def verify_firebase_token(authorization: Optional[str] = None) -> dict:
         user_id = decoded_token.get("uid")
         
         # Check whitelist
-        allowed = [e.lower().strip() for e in settings.allowed_emails]
+        allowed = [e.lower().strip() for e in settings.ALLOWED_EMAILS]
         if user_email not in allowed:
             logger.warning(f"Access denied for non-whitelisted user: {user_email}")
             raise HTTPException(
