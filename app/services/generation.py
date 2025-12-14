@@ -1,6 +1,9 @@
 import base64
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+import httpx
+import google.auth
+import google.auth.transport.requests
+from google import genai
+from google.genai import types
 from typing import Optional, List
 from app.config import settings
 from app.schemas import ImageResponse, TextResponse, UpscaleResponse, VideoStatusResponse
@@ -9,17 +12,17 @@ from app.logging_config import setup_logger
 
 logger = setup_logger(__name__)
 
-# Initialize Vertex AI once at module load
-vertexai.init(project=settings.project_id, location=settings.location)
+# Initialize the client
+client = genai.Client(
+    vertexai=True,
+    project=settings.project_id,
+    location=settings.location
+)
 
 
 class GenerationService:
     def __init__(self, library_service: Optional[LibraryService] = None):
         self.library = library_service or LibraryService()
-        
-        # Initialize models from config
-        self.text_model = GenerativeModel(settings.gemini_text_model)
-        self.image_model = GenerativeModel(settings.gemini_image_model)
     
     def _strip_base64_prefix(self, data: str) -> str:
         """Remove data URL prefix if present"""
@@ -29,9 +32,6 @@ class GenerationService:
     
     def _get_auth_headers(self) -> dict:
         """Get authentication headers for REST API calls"""
-        import google.auth
-        import google.auth.transport.requests
-        
         credentials, _ = google.auth.default()
         auth_req = google.auth.transport.requests.Request()
         credentials.refresh(auth_req)
@@ -47,28 +47,28 @@ class GenerationService:
         reference_images: Optional[List[str]] = None
     ) -> ImageResponse:
         """Generate images using Gemini"""
-        parts = []
+        contents = []
         
         if reference_images:
             for ref_image in reference_images:
                 clean_image = self._strip_base64_prefix(ref_image)
                 image_bytes = base64.b64decode(clean_image)
-                parts.append(Part.from_data(image_bytes, mime_type="image/png"))
+                contents.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
         
-        parts.append(prompt)
+        contents.append(prompt)
         
-        response = self.image_model.generate_content(
-            parts,
-            generation_config=GenerationConfig(
+        response = client.models.generate_content(
+            model=settings.gemini_image_model,
+            contents=contents,
+            config=types.GenerateContentConfig(
                 response_modalities=["TEXT", "IMAGE"]
             )
         )
         
         images = []
-        for candidate in response.candidates:
-            for part in candidate.content.parts:
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    images.append(base64.b64encode(part.inline_data.data).decode())
+        for part in response.candidates[0].content.parts:
+            if part.inline_data:
+                images.append(base64.b64encode(part.inline_data.data).decode())
         
         if not images:
             raise Exception("No images generated")
@@ -97,9 +97,9 @@ class GenerationService:
         duration_seconds: int = 8,
         generate_audio: bool = True
     ) -> dict:
-        """Start video generation using Veo (REST API - no SDK support yet)"""
-        import httpx
-        
+        """Start video generation using Veo"""
+        # Check if SDK supports video generation
+        # If not, fall back to REST API
         endpoint = f"https://{settings.location}-aiplatform.googleapis.com/v1/projects/{settings.project_id}/locations/{settings.location}/publishers/google/models/{settings.veo_model}:predictLongRunning"
         
         instance = {"prompt": prompt}
@@ -139,8 +139,8 @@ class GenerationService:
             }
         }
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
+        async with httpx.AsyncClient() as http_client:
+            response = await http_client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
         
         if response.status_code != 200:
             raise Exception(f"API error: {response.status_code} - {response.text}")
@@ -158,13 +158,11 @@ class GenerationService:
         user_id: str,
         prompt: Optional[str] = None
     ) -> VideoStatusResponse:
-        """Check video generation status (REST API)"""
-        import httpx
-        
+        """Check video generation status"""
         endpoint = f"https://{settings.location}-aiplatform.googleapis.com/v1/{operation_name}"
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(endpoint, headers=self._get_auth_headers(), timeout=60.0)
+        async with httpx.AsyncClient() as http_client:
+            response = await http_client.get(endpoint, headers=self._get_auth_headers(), timeout=60.0)
         
         if response.status_code != 200:
             raise Exception(f"API error: {response.status_code} - {response.text}")
@@ -218,9 +216,10 @@ class GenerationService:
             full_prompt += f"Context: {context}\n\n"
         full_prompt += prompt
         
-        response = self.text_model.generate_content(
-            full_prompt,
-            generation_config=GenerationConfig(
+        response = client.models.generate_content(
+            model=settings.gemini_text_model,
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
                 temperature=temperature,
                 max_output_tokens=8192
             )
@@ -237,9 +236,7 @@ class GenerationService:
         upscale_factor: str = "x2",
         output_mime_type: str = "image/png"
     ) -> UpscaleResponse:
-        """Upscale an image using Imagen (REST API - no SDK support yet)"""
-        import httpx
-        
+        """Upscale an image using Imagen"""
         endpoint = f"https://{settings.location}-aiplatform.googleapis.com/v1/projects/{settings.project_id}/locations/{settings.location}/publishers/google/models/{settings.upscale_model}:predict"
         
         payload = {
@@ -254,8 +251,8 @@ class GenerationService:
             }
         }
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
+        async with httpx.AsyncClient() as http_client:
+            response = await http_client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
         
         if response.status_code != 200:
             raise Exception(f"API error: {response.status_code} - {response.text}")

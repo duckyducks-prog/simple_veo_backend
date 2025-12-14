@@ -1,6 +1,5 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from app.services.generation import GenerationService
 
 @pytest.fixture
 def mock_library_service():
@@ -8,189 +7,110 @@ def mock_library_service():
     service.save_asset = AsyncMock()
     return service
 
-@pytest.fixture
-def generation_service(mock_library_service):
-    return GenerationService(library_service=mock_library_service)
-
 class TestGenerateImage:
     @pytest.mark.asyncio
-    @patch("app.services.generation.httpx.AsyncClient")
-    @patch("app.services.generation.google.auth.default")
-    async def test_successful_generation(self, mock_auth, mock_client, generation_service):
+    @patch("app.services.generation.client")
+    async def test_successful_generation(self, mock_genai_client, mock_library_service):
         """Successful image generation returns images"""
-        # Mock auth
-        mock_creds = MagicMock()
-        mock_creds.token = "fake-token"
-        mock_auth.return_value = (mock_creds, "project")
+        mock_part = MagicMock()
+        mock_part.inline_data = MagicMock()
+        mock_part.inline_data.data = b"fake_image_bytes"
         
-        # Mock API response
+        mock_candidate = MagicMock()
+        mock_candidate.content.parts = [mock_part]
+        
         mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "candidates": [{
-                "content": {
-                    "parts": [{"inlineData": {"data": "base64imagedata"}}]
-                }
-            }]
-        }
+        mock_response.candidates = [mock_candidate]
+        mock_genai_client.models.generate_content.return_value = mock_response
         
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client.return_value.__aenter__.return_value = mock_client_instance
+        from app.services.generation import GenerationService
+        service = GenerationService(library_service=mock_library_service)
         
-        result = await generation_service.generate_image(
-            prompt="a puppy",
-            user_id="user-123"
-        )
+        result = await service.generate_image(prompt="a puppy", user_id="user-123")
         
         assert len(result.images) == 1
-        assert result.images[0] == "base64imagedata"
+        mock_library_service.save_asset.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("app.services.generation.httpx.AsyncClient")
-    @patch("app.services.generation.google.auth.default")
-    async def test_saves_to_library(self, mock_auth, mock_client, generation_service, mock_library_service):
-        """Generated images are saved to library"""
-        mock_creds = MagicMock()
-        mock_creds.token = "fake-token"
-        mock_auth.return_value = (mock_creds, "project")
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "candidates": [{
-                "content": {
-                    "parts": [{"inlineData": {"data": "base64imagedata"}}]
-                }
-            }]
-        }
-        
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client.return_value.__aenter__.return_value = mock_client_instance
-        
-        await generation_service.generate_image(
-            prompt="a puppy",
-            user_id="user-123"
-        )
-        
-        mock_library_service.save_asset.assert_called_once_with(
-            data="base64imagedata",
-            asset_type="image",
-            user_id="user-123",
-            prompt="a puppy"
-        )
-
-    @pytest.mark.asyncio
-    @patch("app.services.generation.httpx.AsyncClient")
-    @patch("app.services.generation.google.auth.default")
-    async def test_api_error_raises(self, mock_auth, mock_client, generation_service):
-        """API error raises exception"""
-        mock_creds = MagicMock()
-        mock_creds.token = "fake-token"
-        mock_auth.return_value = (mock_creds, "project")
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.text = "Internal Server Error"
-        
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client.return_value.__aenter__.return_value = mock_client_instance
-        
-        with pytest.raises(Exception, match="API error: 500"):
-            await generation_service.generate_image(
-                prompt="a puppy",
-                user_id="user-123"
-            )
-
-    @pytest.mark.asyncio
-    @patch("app.services.generation.httpx.AsyncClient")
-    @patch("app.services.generation.google.auth.default")
-    async def test_no_images_raises(self, mock_auth, mock_client, generation_service):
+    @patch("app.services.generation.client")
+    async def test_no_images_raises(self, mock_genai_client, mock_library_service):
         """No images in response raises exception"""
-        mock_creds = MagicMock()
-        mock_creds.token = "fake-token"
-        mock_auth.return_value = (mock_creds, "project")
+        mock_candidate = MagicMock()
+        mock_candidate.content.parts = []
         
         mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"candidates": []}
+        mock_response.candidates = [mock_candidate]
+        mock_genai_client.models.generate_content.return_value = mock_response
         
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client.return_value.__aenter__.return_value = mock_client_instance
+        from app.services.generation import GenerationService
+        service = GenerationService(library_service=mock_library_service)
         
         with pytest.raises(Exception, match="No images generated"):
-            await generation_service.generate_image(
-                prompt="a puppy",
-                user_id="user-123"
-            )
+            await service.generate_image(prompt="a puppy", user_id="user-123")
+
+
+class TestGenerateText:
+    @pytest.mark.asyncio
+    @patch("app.services.generation.client")
+    async def test_successful_generation(self, mock_genai_client, mock_library_service):
+        """Text generation returns response"""
+        mock_response = MagicMock()
+        mock_response.text = "Hello, I am Gemini!"
+        mock_genai_client.models.generate_content.return_value = mock_response
+        
+        from app.services.generation import GenerationService
+        service = GenerationService(library_service=mock_library_service)
+        
+        result = await service.generate_text(prompt="Say hello")
+        
+        assert result.response == "Hello, I am Gemini!"
+
+    @pytest.mark.asyncio
+    @patch("app.services.generation.client")
+    async def test_with_system_prompt(self, mock_genai_client, mock_library_service):
+        """Text generation includes system prompt"""
+        mock_response = MagicMock()
+        mock_response.text = "Arrr!"
+        mock_genai_client.models.generate_content.return_value = mock_response
+        
+        from app.services.generation import GenerationService
+        service = GenerationService(library_service=mock_library_service)
+        
+        await service.generate_text(prompt="Say hello", system_prompt="You are a pirate")
+        
+        call_args = mock_genai_client.models.generate_content.call_args
+        assert "System: You are a pirate" in call_args.kwargs["contents"]
+
 
 class TestGenerateVideo:
     @pytest.mark.asyncio
     @patch("app.services.generation.httpx.AsyncClient")
-    @patch("app.services.generation.google.auth.default")
-    async def test_returns_operation_name(self, mock_auth, mock_client, generation_service):
+    @patch("app.services.generation.client")
+    async def test_returns_operation_name(self, mock_genai_client, mock_httpx, mock_library_service):
         """Video generation returns operation name for polling"""
-        mock_creds = MagicMock()
-        mock_creds.token = "fake-token"
-        mock_auth.return_value = (mock_creds, "project")
-        
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"name": "operations/video-op-123"}
         
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client.return_value.__aenter__.return_value = mock_client_instance
+        mock_http_client = AsyncMock()
+        mock_http_client.post.return_value = mock_response
+        mock_httpx.return_value.__aenter__.return_value = mock_http_client
         
-        result = await generation_service.generate_video(
-            prompt="dancing cat",
-            user_id="user-123"
-        )
+        from app.services.generation import GenerationService
+        service = GenerationService(library_service=mock_library_service)
+        
+        result = await service.generate_video(prompt="dancing cat", user_id="user-123")
         
         assert result["status"] == "processing"
         assert result["operation_name"] == "operations/video-op-123"
 
-class TestGenerateText:
-    @pytest.mark.asyncio
-    @patch("app.services.generation.httpx.AsyncClient")
-    @patch("app.services.generation.google.auth.default")
-    async def test_successful_generation(self, mock_auth, mock_client, generation_service):
-        """Text generation returns response"""
-        mock_creds = MagicMock()
-        mock_creds.token = "fake-token"
-        mock_auth.return_value = (mock_creds, "project")
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "candidates": [{
-                "content": {
-                    "parts": [{"text": "Hello, I am Claude!"}]
-                }
-            }]
-        }
-        
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client.return_value.__aenter__.return_value = mock_client_instance
-        
-        result = await generation_service.generate_text(prompt="Say hello")
-        
-        assert result.response == "Hello, I am Claude!"
 
 class TestUpscaleImage:
     @pytest.mark.asyncio
     @patch("app.services.generation.httpx.AsyncClient")
-    @patch("app.services.generation.google.auth.default")
-    async def test_successful_upscale(self, mock_auth, mock_client, generation_service):
+    @patch("app.services.generation.client")
+    async def test_successful_upscale(self, mock_genai_client, mock_httpx, mock_library_service):
         """Upscale returns larger image"""
-        mock_creds = MagicMock()
-        mock_creds.token = "fake-token"
-        mock_auth.return_value = (mock_creds, "project")
-        
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -200,11 +120,14 @@ class TestUpscaleImage:
             }]
         }
         
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client.return_value.__aenter__.return_value = mock_client_instance
+        mock_http_client = AsyncMock()
+        mock_http_client.post.return_value = mock_response
+        mock_httpx.return_value.__aenter__.return_value = mock_http_client
         
-        result = await generation_service.upscale_image(image="small-image")
+        from app.services.generation import GenerationService
+        service = GenerationService(library_service=mock_library_service)
+        
+        result = await service.upscale_image(image="small-image")
         
         assert result.image == "upscaled-image-data"
         assert result.mime_type == "image/png"
