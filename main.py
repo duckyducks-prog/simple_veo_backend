@@ -30,11 +30,13 @@ GCS_BUCKET = os.environ.get("GCS_BUCKET", "genmedia-assets-remarkablenotion")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "genmediastudio")
 
 # Allowed users whitelist (can also be set via ALLOWED_EMAILS env var, comma-separated)
-ALLOWED_EMAILS = os.environ.get("ALLOWED_EMAILS", "ldebortolialves@hubspot.com").split(",")
+ALLOWED_EMAILS = os.environ.get("ALLOWED_EMAILS", "ldebortolialves@hubspot.com, meganzinka@gmail.com").split(",")
 
-# Initialize Firebase Admin SDK
+# Initialize Firebase Admin SDK with explicit project ID
 try:
-    firebase_admin.initialize_app()
+    firebase_admin.initialize_app(options={
+        'projectId': FIREBASE_PROJECT_ID
+    })
 except ValueError:
     pass  # Already initialized
 
@@ -136,6 +138,7 @@ def health():
         "status": "ok",
         "project": PROJECT_ID,
         "location": LOCATION,
+        "firebase_project": FIREBASE_PROJECT_ID,
         "models": {
             "image": "Gemini 3 Pro Image (Nano Banana Pro)",
             "video": "Veo 3.1",
@@ -179,7 +182,7 @@ def verify_firebase_token(token: Optional[str]) -> dict:
         
         # Check whitelist
         if user_email not in [e.lower().strip() for e in ALLOWED_EMAILS]:
-            raise HTTPException(status_code=403, detail="Access denied. User not authorized.")
+            raise HTTPException(status_code=403, detail=f"Access denied. User {user_email} not authorized.")
         
         return {"uid": user_id, "email": user_email}
     except firebase_admin.exceptions.FirebaseError as e:
@@ -253,8 +256,7 @@ async def generate_image(request: ImageRequest, authorization: Optional[str] = H
                         file_bytes = base64.b64decode(img_data)
                         bucket = gcs_client.bucket(GCS_BUCKET)
                         blob = bucket.blob(blob_path)
-                        blob.upload_from_string(file_bytes, content_type="image/png")
-                        blob.make_public()
+                        blob.upload_from_string(file_bytes, content_type="image/png")                  
                         
                         metadata = {
                             "id": asset_id,
@@ -267,8 +269,8 @@ async def generate_image(request: ImageRequest, authorization: Optional[str] = H
                         }
                         meta_blob = bucket.blob(f"metadata/{asset_id}.json")
                         meta_blob.upload_from_string(json.dumps(metadata), content_type="application/json")
-                    except Exception:
-                        pass  # Don't fail generation if save fails
+                    except Exception as save_error:
+                        print(f"[METADATA ERROR] {type(save_error).__name__}: {save_error}")
                 
                 return ImageResponse(images=images)
             else:
@@ -276,6 +278,8 @@ async def generate_image(request: ImageRequest, authorization: Optional[str] = H
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
             
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -347,6 +351,8 @@ async def generate_video(request: VideoRequest, authorization: Optional[str] = H
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
             
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -391,8 +397,7 @@ async def check_video_status(request: StatusRequest, authorization: Optional[str
                                 file_bytes = base64.b64decode(video_base64)
                                 bucket = gcs_client.bucket(GCS_BUCKET)
                                 blob = bucket.blob(blob_path)
-                                blob.upload_from_string(file_bytes, content_type="video/mp4")
-                                blob.make_public()
+                                blob.upload_from_string(file_bytes, content_type="video/mp4")                     
                                 
                                 metadata = {
                                     "id": asset_id,
@@ -405,8 +410,8 @@ async def check_video_status(request: StatusRequest, authorization: Optional[str
                                 }
                                 meta_blob = bucket.blob(f"metadata/{asset_id}.json")
                                 meta_blob.upload_from_string(json.dumps(metadata), content_type="application/json")
-                            except Exception:
-                                pass  # Don't fail if save fails
+                            except Exception as save_error:
+                                print(f"[VIDEO METADATA ERROR] {type(save_error).__name__}: {save_error}")
                             
                             return {
                                 "status": "complete",
@@ -429,6 +434,8 @@ async def check_video_status(request: StatusRequest, authorization: Optional[str
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
             
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -484,18 +491,23 @@ async def generate_text(request: TextRequest):
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
             
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/upscale/image", response_model=UpscaleResponse)
-async def upscale_image(request: UpscaleRequest):
+async def upscale_image(request: UpscaleRequest, authorization: Optional[str] = Header(None)):
     """
     Upscale an image using Imagen 4.0 Upscale.
     
     - upscale_factor: "x2", "x3", or "x4"
     - Input resolution × upscale_factor must not exceed 17 megapixels
     """
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    
     try:
         endpoint = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{UPSCALE_MODEL}:predict"
         
@@ -542,13 +554,18 @@ async def upscale_image(request: UpscaleRequest):
         else:
             raise HTTPException(status_code=response.status_code, detail=response.text)
             
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/video/extend")
-async def extend_video(request: dict):
+async def extend_video(request: dict, authorization: Optional[str] = Header(None)):
     """Extend an existing video"""
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    
     try:
         video_base64 = request.get("video_base64")
         prompt = request.get("prompt", "Continue this video")
@@ -601,8 +618,12 @@ async def extend_video(request: dict):
 # ============== ASSET LIBRARY ENDPOINTS ==============
 
 @app.post("/library/save", response_model=AssetResponse)
-async def save_asset(request: SaveAssetRequest):
+async def save_asset(request: SaveAssetRequest, authorization: Optional[str] = Header(None)):
     """Save an image or video to the asset library"""
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    user_id = user_info["uid"]
+    
     try:
         # Generate unique ID
         asset_id = str(uuid.uuid4())
@@ -618,11 +639,8 @@ async def save_asset(request: SaveAssetRequest):
         else:
             raise HTTPException(status_code=400, detail="asset_type must be 'image' or 'video'")
         
-        # Create blob path (user-specific if user_id provided)
-        if request.user_id:
-            blob_path = f"users/{request.user_id}/{request.asset_type}s/{asset_id}.{ext}"
-        else:
-            blob_path = f"{request.asset_type}s/{asset_id}.{ext}"
+        # Create blob path (user-specific)
+        blob_path = f"users/{user_id}/{request.asset_type}s/{asset_id}.{ext}"
         
         # Decode base64 and upload
         clean_data = strip_base64_prefix(request.data)
@@ -632,8 +650,6 @@ async def save_asset(request: SaveAssetRequest):
         blob = bucket.blob(blob_path)
         blob.upload_from_string(file_bytes, content_type=mime_type)
         
-        # Make blob publicly readable
-        blob.make_public()
         
         # Save metadata
         metadata = {
@@ -643,7 +659,7 @@ async def save_asset(request: SaveAssetRequest):
             "created_at": timestamp,
             "mime_type": mime_type,
             "blob_path": blob_path,
-            "user_id": request.user_id
+            "user_id": user_id
         }
         
         meta_blob = bucket.blob(f"metadata/{asset_id}.json")
@@ -659,9 +675,11 @@ async def save_asset(request: SaveAssetRequest):
             prompt=request.prompt,
             created_at=timestamp,
             mime_type=mime_type,
-            user_id=request.user_id
+            user_id=user_id
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -711,8 +729,12 @@ async def list_assets(asset_type: Optional[str] = None, limit: int = 50, authori
 
 
 @app.get("/library/{asset_id}")
-async def get_asset(asset_id: str):
+async def get_asset(asset_id: str, authorization: Optional[str] = Header(None)):
     """Get a specific asset by ID"""
+    # Verify token and check whitelist
+    user_info = verify_firebase_token(authorization)
+    user_id = user_info["uid"]
+    
     try:
         bucket = gcs_client.bucket(GCS_BUCKET)
         meta_blob = bucket.blob(f"metadata/{asset_id}.json")
@@ -721,6 +743,10 @@ async def get_asset(asset_id: str):
             raise HTTPException(status_code=404, detail="Asset not found")
         
         metadata = json.loads(meta_blob.download_as_string())
+        
+        # Check ownership
+        if metadata.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         # Get public URL
         asset_blob = bucket.blob(metadata["blob_path"])
@@ -769,3 +795,41 @@ async def delete_asset(asset_id: str, authorization: Optional[str] = Header(None
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    # Development runner that prefers `uv`/`uvicorn` from a local virtualenv (.venv).
+    # If the venv doesn't exist, create it and prompt to install dependencies
+    # via `./run.sh` (created in the repo). This keeps behavior explicit and
+    # reproducible for local dev while Cloud Run / Docker should use the
+    # container entrypoint instead.
+    import shutil
+    import venv
+
+    venv_dir = ".venv"
+    if not os.path.isdir(venv_dir):
+        print("Creating virtual environment in .venv")
+        venv.create(venv_dir, with_pip=True)
+        print("Virtual environment created. Run './run.sh' to install requirements into the venv.")
+        # After creating venv we exit so the user can install packages first.
+        raise SystemExit(0)
+
+    # Prepend venv bin to PATH so that `uv`/`uvicorn` installed into the venv is preferred.
+    bin_dir = os.path.join(venv_dir, "bin")
+    os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+
+    # Prefer `uv` (if you have a short alias/entry), fall back to `uvicorn`.
+    preferred = None
+    for cmd in ("uv", "uvicorn"):
+        if shutil.which(cmd):
+            preferred = cmd
+            break
+
+    port = os.environ.get("PORT", "8080")
+    if preferred:
+        print(f"Starting {preferred} on 0.0.0.0:{port} (from {bin_dir})")
+        os.execvp(preferred, [preferred, "main:app", "--host", "0.0.0.0", "--port", str(port), "--reload"])  # replaces process
+    else:
+        print("uv/uvicorn not found in .venv. Run './run.sh' to install requirements. Falling back to programmatic uvicorn.")
+        import uvicorn
+        uvicorn.run("main:app", host="0.0.0.0", port=int(port), log_level="info")
