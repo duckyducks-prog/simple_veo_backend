@@ -19,6 +19,12 @@ client = genai.Client(
     location=settings.location
 )
 
+image_client = genai.Client(
+    vertexai=True,
+    project=settings.project_id,
+    location="global"  # Image models use global
+)
+
 
 class GenerationService:
     def __init__(self, library_service: Optional[LibraryService] = None):
@@ -57,7 +63,7 @@ class GenerationService:
         
         contents.append(prompt)
         
-        response = client.models.generate_content(
+        response = image_client.models.generate_content(
             model=settings.gemini_image_model,
             contents=contents,
             config=types.GenerateContentConfig(
