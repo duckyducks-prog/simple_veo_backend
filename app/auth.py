@@ -3,6 +3,9 @@ from firebase_admin import auth as firebase_auth
 from fastapi import HTTPException, Header
 from typing import Optional
 from app.config import settings
+from app.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 # Initialize Firebase Admin SDK
 _firebase_initialized = False
@@ -15,8 +18,10 @@ def init_firebase():
                 'projectId': settings.firebase_project_id
             })
             _firebase_initialized = True
+            logger.info(f"Firebase Admin SDK initialized for project: {settings.firebase_project_id}")
         except ValueError:
             _firebase_initialized = True  # Already initialized
+            logger.debug("Firebase Admin SDK already initialized")
 
 def verify_firebase_token(authorization: Optional[str] = None) -> dict:
     """
@@ -27,6 +32,7 @@ def verify_firebase_token(authorization: Optional[str] = None) -> dict:
     init_firebase()
     
     if not authorization:
+        logger.warning("Authentication attempt without token")
         raise HTTPException(status_code=401, detail="No authorization token provided")
     
     # Remove 'Bearer ' prefix if present
@@ -43,17 +49,21 @@ def verify_firebase_token(authorization: Optional[str] = None) -> dict:
         # Check whitelist
         allowed = [e.lower().strip() for e in settings.allowed_emails]
         if user_email not in allowed:
+            logger.warning(f"Access denied for non-whitelisted user: {user_email}")
             raise HTTPException(
                 status_code=403, 
                 detail=f"Access denied. User {user_email} not authorized."
             )
         
+        logger.info(f"User authenticated successfully: {user_email}")
         return {"uid": user_id, "email": user_email}
     except firebase_admin.exceptions.FirebaseError as e:
+        logger.error(f"Firebase token verification failed: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Unexpected error during token verification: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
 
 

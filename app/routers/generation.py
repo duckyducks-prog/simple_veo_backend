@@ -7,7 +7,9 @@ from app.schemas import (
 )
 from app.auth import get_current_user
 from app.services.generation import GenerationService
+from app.logging_config import setup_logger
 
+logger = setup_logger(__name__)
 router = APIRouter()
 
 def get_generation_service() -> GenerationService:
@@ -21,12 +23,14 @@ async def generate_image(
 ):
     """Generate images using Gemini 3 Pro Image"""
     try:
+        logger.info(f"Image generation request from user {user['email']}")
         return await service.generate_image(
             prompt=request.prompt,
             user_id=user["uid"],
             reference_images=request.reference_images
         )
     except Exception as e:
+        logger.error(f"Image generation failed for user {user['email']}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/video")
@@ -37,6 +41,7 @@ async def generate_video(
 ):
     """Generate video using Veo 3.1"""
     try:
+        logger.info(f"Video generation request from user {user['email']}")
         return await service.generate_video(
             prompt=request.prompt,
             user_id=user["uid"],
@@ -48,6 +53,7 @@ async def generate_video(
             generate_audio=request.generate_audio
         )
     except Exception as e:
+        logger.error(f"Video generation failed for user {user['email']}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/text", response_model=TextResponse)
@@ -57,6 +63,7 @@ async def generate_text(
 ):
     """Generate text using Gemini 3 Pro"""
     try:
+        logger.info("Text generation request")
         return await service.generate_text(
             prompt=request.prompt,
             system_prompt=request.system_prompt,
@@ -64,6 +71,7 @@ async def generate_text(
             temperature=request.temperature
         )
     except Exception as e:
+        logger.error(f"Text generation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/video/status", response_model=VideoStatusResponse)
@@ -74,12 +82,14 @@ async def check_video_status(
 ):
     """Check video generation status"""
     try:
+        logger.debug(f"Video status check from user {user['email']}: {request.operation_name}")
         return await service.check_video_status(
             operation_name=request.operation_name,
             user_id=user["uid"],
             prompt=request.prompt
         )
     except Exception as e:
+        logger.error(f"Video status check failed for user {user['email']}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/upscale", response_model=UpscaleResponse)
@@ -90,10 +100,12 @@ async def upscale_image(
 ):
     """Upscale an image using Imagen 4.0"""
     try:
+        logger.info(f"Image upscale request from user {user['email']}")
         return await service.upscale_image(
             image=request.image,
             upscale_factor=request.upscale_factor,
             output_mime_type=request.output_mime_type
         )
     except Exception as e:
+        logger.error(f"Image upscale failed for user {user['email']}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

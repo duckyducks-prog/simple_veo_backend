@@ -2,8 +2,15 @@ import firebase_admin
 from firebase_admin import auth, credentials
 import requests
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
+# Add app directory to path for logging_config import
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from app.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 load_dotenv()
 
 # Initialize Firebase Admin
@@ -16,7 +23,7 @@ if os.path.exists(cred_path):
     except ValueError:
         pass  # Already initialized
 else:
-    print(f"Error: Service account key file not found at '{cred_path}'")
+    logger.error(f"Service account key file not found at '{cred_path}'")
     exit(1)
 
 # Test user details - MUST match your allowed_emails
@@ -32,7 +39,7 @@ custom_token = auth.create_custom_token(
 # Exchange for ID token
 API_KEY = os.environ.get('FIREBASE_API_KEY')
 if not API_KEY:
-    print("Error: FIREBASE_API_KEY not found")
+    logger.error("FIREBASE_API_KEY not found in environment variables")
     exit(1)
 
 response = requests.post(
@@ -41,6 +48,8 @@ response = requests.post(
 )
 
 if response.status_code == 200:
+    # Print to stdout for script output (not logging)
     print(response.json()["idToken"])
 else:
-    print(f"Error: {response.json()}")
+    logger.error(f"Failed to exchange token: {response.json()}")
+    exit(1)

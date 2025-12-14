@@ -6,6 +6,9 @@ from typing import Optional, List
 from google.cloud import storage
 from app.config import settings
 from app.schemas import AssetResponse, LibraryResponse
+from app.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 class LibraryService:
     def __init__(self, gcs_client: Optional[storage.Client] = None):
@@ -36,6 +39,7 @@ class LibraryService:
         asset_id = self._generate_asset_id()
         timestamp = self._get_timestamp()
         
+        logger.info(f"Saving {asset_type} asset for user {user_id}")
         # Determine file extension and mime type
         if asset_type == "image":
             ext = "png" if not mime_type or "png" in mime_type else "jpg"
@@ -69,6 +73,8 @@ class LibraryService:
         
         meta_blob = self.bucket.blob(f"metadata/{asset_id}.json")
         meta_blob.upload_from_string(json.dumps(metadata), content_type="application/json")
+        
+        logger.info(f"Successfully saved {asset_type} asset {asset_id} to {blob_path}")
         
         url = f"https://storage.googleapis.com/{settings.gcs_bucket}/{blob_path}"
         

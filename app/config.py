@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     firebase_project_id: str = "genmediastudio"
     allowed_emails: list[str] = ["ldebortolialves@hubspot.com", "meganzinka@gmail.com"]
     
+    # Firebase config (for testing)
+    firebase_api_key: str = ""
+    firebase_service_account_key: str = "serviceAccountKey.json"
+    
     # Model names
     gemini_image_model: str = "gemini-3-pro-image-preview"
     gemini_text_model: str = "gemini-3-pro-preview"
@@ -15,7 +19,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        env_file_encoding="utf-8"
+        env_file_encoding="utf-8",
+        extra="ignore"  # Or add this to ignore unknown env vars
     )
 
 settings = Settings()

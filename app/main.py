@@ -1,8 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import generation, library, health
+from app.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 app = FastAPI(title="GenMedia API")
+
+logger.info("Starting GenMedia API application")
 
 app.add_middleware(
     CORSMiddleware,

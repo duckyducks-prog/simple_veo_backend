@@ -5,6 +5,9 @@ from typing import Optional, List
 from app.config import settings
 from app.schemas import ImageResponse, TextResponse, UpscaleResponse, VideoStatusResponse
 from app.services.library import LibraryService
+from app.logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 class GenerationService:
     def __init__(self, library_service: Optional[LibraryService] = None):
@@ -91,7 +94,7 @@ class GenerationService:
                     prompt=prompt
                 )
             except Exception as e:
-                print(f"[METADATA ERROR] {type(e).__name__}: {e}")
+                logger.error(f"Failed to save image to library: {type(e).__name__}: {e}")
         
         return ImageResponse(images=images)
 
@@ -202,7 +205,7 @@ class GenerationService:
                                 prompt=prompt
                             )
                         except Exception as e:
-                            print(f"[VIDEO METADATA ERROR] {type(e).__name__}: {e}")
+                            logger.error(f"Failed to save video to library: {type(e).__name__}: {e}")
                         
                         return VideoStatusResponse(status="complete", video_base64=video_base64)
                     elif "uri" in video_data:
