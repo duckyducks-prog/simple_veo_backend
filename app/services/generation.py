@@ -103,9 +103,7 @@ class GenerationService:
         duration_seconds: int = 8,
         generate_audio: bool = True
     ) -> dict:
-        """Start video generation using Veo"""
-        # Check if SDK supports video generation
-        # If not, fall back to REST API
+        """Start video generation using Veo via REST API"""
         endpoint = f"https://{settings.location}-aiplatform.googleapis.com/v1/projects/{settings.project_id}/locations/{settings.location}/publishers/google/models/{settings.veo_model}:predictLongRunning"
         
         instance = {"prompt": prompt}
@@ -164,11 +162,20 @@ class GenerationService:
         user_id: str,
         prompt: Optional[str] = None
     ) -> VideoStatusResponse:
-        """Check video generation status"""
-        endpoint = f"https://{settings.location}-aiplatform.googleapis.com/v1/{operation_name}"
+        """Check video generation status using fetchPredictOperation"""
+        endpoint = f"https://{settings.location}-aiplatform.googleapis.com/v1/projects/{settings.project_id}/locations/{settings.location}/publishers/google/models/{settings.veo_model}:fetchPredictOperation"
+        
+        payload = {
+            "operationName": operation_name
+        }
         
         async with httpx.AsyncClient() as http_client:
-            response = await http_client.get(endpoint, headers=self._get_auth_headers(), timeout=60.0)
+            response = await http_client.post(
+                endpoint, 
+                json=payload, 
+                headers=self._get_auth_headers(), 
+                timeout=60.0
+            )
         
         if response.status_code != 200:
             raise Exception(f"API error: {response.status_code} - {response.text}")
@@ -177,29 +184,55 @@ class GenerationService:
         
         if result.get("done"):
             if "response" in result:
-                videos = result["response"].get("generateVideoResponse", {}).get("generatedSamples", [])
+                response_data = result["response"]
+                video_base64 = None
+                storage_uri = None
+                
+                # Try different response structures
+                # Structure 1: generateVideoResponse.generatedSamples
+                videos = response_data.get("generateVideoResponse", {}).get("generatedSamples", [])
                 if videos:
                     video_data = videos[0].get("video", {})
-                    if "bytesBase64Encoded" in video_data:
-                        video_base64 = video_data["bytesBase64Encoded"]
-                        
-                        try:
-                            await self.library.save_asset(
-                                data=video_base64,
-                                asset_type="video",
-                                user_id=user_id,
-                                prompt=prompt
-                            )
-                        except Exception as e:
-                            logger.error(f"Failed to save video to library: {type(e).__name__}: {e}")
-                        
-                        return VideoStatusResponse(status="complete", video_base64=video_base64)
-                    elif "uri" in video_data:
-                        return VideoStatusResponse(status="complete", storage_uri=video_data["uri"])
+                    video_base64 = video_data.get("bytesBase64Encoded")
+                    storage_uri = video_data.get("uri")
                 
-                return VideoStatusResponse(status="complete", message="Video ready but no data returned")
+                # Structure 2: videos array (Veo 3.1)
+                if not video_base64 and not storage_uri:
+                    videos = response_data.get("videos", [])
+                    if videos:
+                        video_base64 = videos[0].get("bytesBase64Encoded")
+                        storage_uri = videos[0].get("uri") or videos[0].get("gcsUri")
+                
+                if video_base64:
+                    try:
+                        await self.library.save_asset(
+                            data=video_base64,
+                            asset_type="video",
+                            user_id=user_id,
+                            prompt=prompt
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to save video to library: {type(e).__name__}: {e}")
+                    
+                    return VideoStatusResponse(status="complete", video_base64=video_base64)
+                
+                if storage_uri:
+                    return VideoStatusResponse(status="complete", storage_uri=storage_uri)
+                
+                return VideoStatusResponse(
+                    status="error",
+                    error={"message": "Video generation completed but no video data found"},
+                    message=f"Available response keys: {list(response_data.keys())}"
+                )
+            
             elif "error" in result:
                 return VideoStatusResponse(status="error", error=result["error"])
+        
+        metadata = result.get("metadata", {})
+        return VideoStatusResponse(
+            status="processing",
+            progress=metadata.get("progressPercent", 0)
+        )
         
         metadata = result.get("metadata", {})
         return VideoStatusResponse(

@@ -194,7 +194,7 @@ class TestVideoStatusAPI:
         mock_response.json.return_value = mock_vertex_response_video_complete
         
         mock_http_client = AsyncMock()
-        mock_http_client.get.return_value = mock_response
+        mock_http_client.post.return_value = mock_response
         mock_httpx.return_value.__aenter__.return_value = mock_http_client
         
         response = client.post("/generate/video/status", json={
