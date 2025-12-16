@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import generation, library, health
+from app.routers import generation, library, health, workflow
 from app.logging_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -21,3 +21,4 @@ app.add_middleware(
 app.include_router(health.router, tags=["health"])
 app.include_router(generation.router, prefix="/generate", tags=["generation"])
 app.include_router(library.router, prefix="/library", tags=["library"])
+app.include_router(workflow.router, prefix="/workflows", tags=["workflows"])

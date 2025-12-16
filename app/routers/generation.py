@@ -23,7 +23,8 @@ async def generate_image(
 ):
     """Generate images using Gemini 3 Pro Image"""
     try:
-        logger.info(f"Image generation request from user {user['email']}")
+        ref_count = len(request.reference_images) if request.reference_images else 0
+        logger.info(f"Image generation request from user {user['email']}, prompt={request.prompt[:50]}..., reference_images={ref_count}")
         return await service.generate_image(
             prompt=request.prompt,
             user_id=user["uid"],
@@ -42,6 +43,7 @@ async def generate_video(
     """Generate video using Veo 3.1"""
     try:
         logger.info(f"Video generation request from user {user['email']}")
+        logger.info(f"Video params: prompt={request.prompt[:50] if request.prompt else 'None'}..., first_frame={'Yes' if request.first_frame else 'No'}, aspect_ratio={request.aspect_ratio}, duration={request.duration_seconds}")
         return await service.generate_video(
             prompt=request.prompt,
             user_id=user["uid"],

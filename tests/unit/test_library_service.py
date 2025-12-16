@@ -125,6 +125,61 @@ class TestListAssets:
         assert result.assets[0].id == "asset-1"
 
     @pytest.mark.asyncio
+    async def test_skips_non_json_files(self, library_service, mock_gcs_client):
+        """Skips files that are not JSON"""
+        _, bucket = mock_gcs_client
+        
+        # Non-json file
+        blob1 = MagicMock()
+        blob1.name = "metadata/some-file.txt"
+        
+        # Valid json file
+        blob2 = MagicMock()
+        blob2.name = "metadata/asset-1.json"
+        blob2.download_as_string.return_value = json.dumps({
+            "id": "asset-1",
+            "user_id": "user-123",
+            "asset_type": "image",
+            "prompt": "test",
+            "created_at": "2024-01-01T00:00:00Z",
+            "mime_type": "image/png",
+            "blob_path": "users/user-123/images/asset-1.png"
+        }).encode()
+        
+        bucket.list_blobs.return_value = [blob1, blob2]
+        
+        result = await library_service.list_assets(user_id="user-123")
+        
+        assert result.count == 1
+        assert result.assets[0].id == "asset-1"
+
+    @pytest.mark.asyncio
+    async def test_respects_limit(self, library_service, mock_gcs_client):
+        """Stops after reaching limit"""
+        _, bucket = mock_gcs_client
+        
+        blobs = []
+        for i in range(10):
+            blob = MagicMock()
+            blob.name = f"metadata/asset-{i}.json"
+            blob.download_as_string.return_value = json.dumps({
+                "id": f"asset-{i}",
+                "user_id": "user-123",
+                "asset_type": "image",
+                "prompt": "test",
+                "created_at": f"2024-01-0{i+1}T00:00:00Z",
+                "mime_type": "image/png",
+                "blob_path": f"users/user-123/images/asset-{i}.png"
+            }).encode()
+            blobs.append(blob)
+        
+        bucket.list_blobs.return_value = blobs
+        
+        result = await library_service.list_assets(user_id="user-123", limit=3)
+        
+        assert result.count == 3
+
+    @pytest.mark.asyncio
     async def test_filters_by_asset_type(self, library_service, mock_gcs_client):
         """Filters by asset type when specified"""
         _, bucket = mock_gcs_client

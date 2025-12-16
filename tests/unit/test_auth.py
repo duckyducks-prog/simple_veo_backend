@@ -1,7 +1,42 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi import HTTPException
-from app.auth import verify_firebase_token, get_current_user
+from app.auth import verify_firebase_token, get_current_user, init_firebase
+
+
+class TestInitFirebase:
+    @patch("app.auth.firebase_admin.initialize_app")
+    def test_init_firebase_first_time(self, mock_init):
+        """First-time initialization succeeds"""
+        import app.auth as auth_module
+        auth_module._firebase_initialized = False
+        
+        init_firebase()
+        
+        mock_init.assert_called_once()
+        assert auth_module._firebase_initialized is True
+
+    @patch("app.auth.firebase_admin.initialize_app")
+    def test_init_firebase_already_initialized(self, mock_init):
+        """Already initialized Firebase doesn't reinitialize"""
+        import app.auth as auth_module
+        auth_module._firebase_initialized = True
+        
+        init_firebase()
+        
+        mock_init.assert_not_called()
+
+    @patch("app.auth.firebase_admin.initialize_app")
+    def test_init_firebase_value_error(self, mock_init):
+        """ValueError from Firebase (already initialized externally) is handled"""
+        import app.auth as auth_module
+        auth_module._firebase_initialized = False
+        mock_init.side_effect = ValueError("Already initialized")
+        
+        init_firebase()
+        
+        assert auth_module._firebase_initialized is True
+
 
 class TestVerifyFirebaseToken:
     def test_missing_token_raises_401(self):

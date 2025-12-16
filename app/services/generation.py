@@ -1,5 +1,6 @@
 import base64
 import httpx
+import asyncio
 import google.auth
 import google.auth.transport.requests
 from google import genai
@@ -12,6 +13,11 @@ from app.logging_config import setup_logger
 
 logger = setup_logger(__name__)
 
+# Retry configuration
+MAX_RETRIES = 5
+INITIAL_RETRY_DELAY = 5  # seconds (longer initial delay)
+MAX_RETRY_DELAY = 60  # seconds
+
 # Initialize the client
 client = genai.Client(
     vertexai=True,
@@ -22,7 +28,7 @@ client = genai.Client(
 image_client = genai.Client(
     vertexai=True,
     project=settings.project_id,
-    location="global"  # Image models use global
+    location="us-central1"  # Gemini image models
 )
 
 
@@ -45,6 +51,29 @@ class GenerationService:
             "Authorization": f"Bearer {credentials.token}",
             "Content-Type": "application/json"
         }
+    
+    async def _retry_with_backoff(self, operation, operation_name: str):
+        """Execute an operation with exponential backoff retry on rate limit errors"""
+        last_exception = None
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                return await operation()
+            except Exception as e:
+                error_str = str(e)
+                # Check if it's a rate limit error (429)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    delay = min(INITIAL_RETRY_DELAY * (2 ** attempt), MAX_RETRY_DELAY)
+                    logger.warning(f"{operation_name}: Rate limited (attempt {attempt + 1}/{MAX_RETRIES}). Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                    last_exception = e
+                else:
+                    # Not a rate limit error, raise immediately
+                    raise
+        
+        # All retries exhausted
+        logger.error(f"{operation_name}: All {MAX_RETRIES} retries exhausted")
+        raise last_exception
 
     async def generate_image(
         self,
@@ -52,33 +81,44 @@ class GenerationService:
         user_id: str,
         reference_images: Optional[List[str]] = None
     ) -> ImageResponse:
-        """Generate images using Gemini"""
-        contents = []
+        """Generate images using Gemini with retry on rate limits"""
         
-        if reference_images:
-            for ref_image in reference_images:
-                clean_image = self._strip_base64_prefix(ref_image)
-                image_bytes = base64.b64decode(clean_image)
-                contents.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
-        
-        contents.append(prompt)
-        
-        response = image_client.models.generate_content(
-            model=settings.gemini_image_model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"]
+        async def _do_generate():
+            contents = []
+            
+            # Add reference images if provided
+            if reference_images:
+                for ref_image in reference_images:
+                    clean_image = self._strip_base64_prefix(ref_image)
+                    image_bytes = base64.b64decode(clean_image)
+                    contents.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
+                # Add instruction to use the reference image
+                contents.append(f"Using the provided reference image(s) as a style and subject guide, generate a new image with this description: {prompt}")
+            else:
+                contents.append(prompt)
+            
+            response = image_client.models.generate_content(
+                model=settings.gemini_image_model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"]
+                )
             )
-        )
+            
+            images = []
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    images.append(base64.b64encode(part.inline_data.data).decode())
+            
+            if not images:
+                raise Exception("No images generated")
+            
+            return images
         
-        images = []
-        for part in response.candidates[0].content.parts:
-            if part.inline_data:
-                images.append(base64.b64encode(part.inline_data.data).decode())
+        # Execute with retry
+        images = await self._retry_with_backoff(_do_generate, "Image generation")
         
-        if not images:
-            raise Exception("No images generated")
-        
+        # Save to library (don't retry this part)
         for img_data in images:
             try:
                 await self.library.save_asset(
@@ -120,10 +160,11 @@ class GenerationService:
                 "mimeType": "image/png"
             }
         
+        # Reference images for subject consistency (Veo 3.1 feature)
         if reference_images:
             instance["referenceImages"] = [
                 {
-                    "image": {
+                    "referenceImage": {
                         "bytesBase64Encoded": self._strip_base64_prefix(img),
                         "mimeType": "image/png"
                     },
@@ -143,13 +184,24 @@ class GenerationService:
             }
         }
         
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
+        logger.info(f"Veo API request: endpoint={endpoint}, instance_keys={list(instance.keys())}")
         
-        if response.status_code != 200:
-            raise Exception(f"API error: {response.status_code} - {response.text}")
+        async def _do_video_request():
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
+            
+            if response.status_code == 429:
+                raise Exception(f"429 RESOURCE_EXHAUSTED: {response.text}")
+            
+            if response.status_code != 200:
+                logger.error(f"Veo API error: status={response.status_code}")
+                logger.error(f"Veo API response: {response.text[:1000]}")
+                raise Exception(f"API error: {response.status_code} - {response.text}")
+            
+            return response.json()
         
-        result = response.json()
+        result = await self._retry_with_backoff(_do_video_request, "Video generation")
+        
         return {
             "status": "processing",
             "operation_name": result.get("name", ""),
@@ -169,18 +221,24 @@ class GenerationService:
             "operationName": operation_name
         }
         
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.post(
-                endpoint, 
-                json=payload, 
-                headers=self._get_auth_headers(), 
-                timeout=60.0
-            )
+        async def _do_status_check():
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(
+                    endpoint, 
+                    json=payload, 
+                    headers=self._get_auth_headers(), 
+                    timeout=60.0
+                )
+            
+            if response.status_code == 429:
+                raise Exception(f"429 RESOURCE_EXHAUSTED: {response.text}")
+            
+            if response.status_code != 200:
+                raise Exception(f"API error: {response.status_code} - {response.text}")
+            
+            return response.json()
         
-        if response.status_code != 200:
-            raise Exception(f"API error: {response.status_code} - {response.text}")
-        
-        result = response.json()
+        result = await self._retry_with_backoff(_do_status_check, "Video status check")
         
         if result.get("done"):
             if "response" in result:
