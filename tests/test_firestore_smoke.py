@@ -80,6 +80,7 @@ class TestWorkflowServiceFirestore:
             "user_id": "test-user",
             "is_public": False,
             "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
             "nodes": [],
             "edges": []
         }
@@ -185,6 +186,6 @@ class TestLibraryServiceFirestore:
         result = await service.list_assets(user_id="test-user", limit=50)
         
         # Verify
-        assert len(result["assets"]) == 1
-        assert result["assets"][0]["asset_type"] == "image"
-        assert "url" in result["assets"][0]
+        assert len(result.assets) == 1
+        assert result.assets[0].asset_type == "image"
+        assert result.assets[0].url is not None

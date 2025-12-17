@@ -2,10 +2,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import ClassVar
 
 class Settings(BaseSettings):
-    project_id: str = "remarkablenotion"
+    project_id: str = "genmediastudio"
     location: str = "us-central1"
-    gcs_bucket: str = "genmedia-assets-remarkablenotion"
-    workflows_bucket: str = "veo-workflows-remarkablenotion"
+    gcs_bucket: str = "genmedia-assets-remarkablenotion"  # Keep existing bucket or create in genmediastudio
+    workflows_bucket: str = "veo-workflows-remarkablenotion"  # Keep existing bucket or create in genmediastudio
     firebase_project_id: str = "genmediastudio"
     
     # Hardcoded, not from env

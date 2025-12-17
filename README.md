@@ -439,5 +439,3 @@ For questions or issues:
 | View API docs | Open http://localhost:8080/docs |
 
 ---
-
-**Built with ❤️ using Google's latest AI models**

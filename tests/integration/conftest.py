@@ -5,6 +5,8 @@ from app.main import app
 from app.auth import get_current_user
 from app.routers.generation import get_generation_service
 from app.routers.library import get_library_service
+from app.routers.workflow import get_workflow_service
+from app.routers.workflow import get_workflow_service
 
 @pytest.fixture
 def client():
@@ -33,6 +35,18 @@ def mock_gcs_bucket():
     bucket.blob.return_value = blob
     bucket.list_blobs.return_value = []
     return bucket
+
+@pytest.fixture
+def mock_firestore_client():
+    """Mock Firestore client for integration tests"""
+    with patch('app.services.workflow_firestore.get_firestore_client') as mock_fs, \
+         patch('app.services.library_firestore.get_firestore_client') as mock_lib_fs:
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_client.collection.return_value = mock_collection
+        mock_fs.return_value = mock_client
+        mock_lib_fs.return_value = mock_client
+        yield mock_client
 
 @pytest.fixture
 def mock_gcs_client(mock_gcs_bucket):
