@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     # Hardcoded, not from env
     ALLOWED_EMAILS: ClassVar[list[str]] = [
         "ldebortolialves@hubspot.com",
-        "meganzinka@gmail.com"
+        "meganzinka@gmail.com",
+        "sfiske@hubspot.com"
     ]
     
     # Firebase config (for testing)
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     firebase_service_account_key: str = "serviceAccountKey.json"
     
     # Model names
-    gemini_image_model: str = "gemini-3-pro-image-preview"
+    gemini_image_model: str = "gemini-2.5-flash-image"
     gemini_text_model: str = "gemini-3-pro-preview"
     veo_model: str = "veo-3.1-generate-preview"
     upscale_model: str = "imagen-4.0-upscale-preview"

@@ -31,9 +31,19 @@ class GenerationService:
         self.library = library_service or LibraryService()
     
     def _strip_base64_prefix(self, data: str) -> str:
-        """Remove data URL prefix if present"""
-        if data and ',' in data and data.startswith('data:'):
-            return data.split(',', 1)[1]
+        """Remove data URL prefix if present and ensure valid base64 padding"""
+        if not data:
+            return data
+            
+        # Remove data URL prefix if present
+        if ',' in data and data.startswith('data:'):
+            data = data.split(',', 1)[1]
+        
+        # Add padding if necessary (base64 strings must be multiple of 4)
+        missing_padding = len(data) % 4
+        if missing_padding:
+            data += '=' * (4 - missing_padding)
+        
         return data
     
     def _get_auth_headers(self) -> dict:
@@ -50,7 +60,9 @@ class GenerationService:
         self,
         prompt: str,
         user_id: str,
-        reference_images: Optional[List[str]] = None
+        reference_images: Optional[List[str]] = None,
+        aspect_ratio: str = "1:1",
+        resolution: str = "1K"
     ) -> ImageResponse:
         """Generate images using Gemini"""
         contents = []
@@ -67,7 +79,11 @@ class GenerationService:
             model=settings.gemini_image_model,
             contents=contents,
             config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"]
+                response_modalities=["TEXT", "IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio=aspect_ratio,
+                    image_size=resolution
+                )
             )
         )
         
@@ -145,6 +161,9 @@ class GenerationService:
         
         async with httpx.AsyncClient() as http_client:
             response = await http_client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
+        
+        if response.status_code == 429:
+            raise Exception(f"API error: 429 - Rate limit exceeded. You may have too many concurrent video generations or have reached your daily quota. Please wait a few minutes and try again.")
         
         if response.status_code != 200:
             raise Exception(f"API error: {response.status_code} - {response.text}")

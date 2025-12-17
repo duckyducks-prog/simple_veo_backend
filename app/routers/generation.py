@@ -27,7 +27,9 @@ async def generate_image(
         return await service.generate_image(
             prompt=request.prompt,
             user_id=user["uid"],
-            reference_images=request.reference_images
+            reference_images=request.reference_images,
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution
         )
     except Exception as e:
         logger.error(f"Image generation failed for user {user['email']}: {str(e)}")
