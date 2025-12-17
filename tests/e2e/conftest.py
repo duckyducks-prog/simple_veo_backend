@@ -19,7 +19,7 @@ def pytest_addoption(parser):
 @pytest.fixture(scope="session")
 def api_base_url():
     """Base URL for API - use deployed or local"""
-    return os.getenv("API_URL", "https://veo-api-82187245577.us-central1.run.app")
+    return os.getenv("API_URL", "https://veo-api-otfo2ctxma-uc.a.run.app")
 
 @pytest.fixture(scope="session")
 def firebase_token():

@@ -220,7 +220,7 @@ class TestWorkflowE2E:
         image_node = workflow["nodes"][0]
         assert "imageUrl" in image_node["data"]
         assert image_node["data"]["imageUrl"] is not None
-        assert "genmedia-assets" in image_node["data"]["imageUrl"]
+        assert "genmediastudio-assets" in image_node["data"]["imageUrl"]
         
         # Cleanup
         http_client.delete(f"{api_base_url}/workflows/{workflow_id}", headers=auth_headers)

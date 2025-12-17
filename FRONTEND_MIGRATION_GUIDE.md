@@ -2,7 +2,8 @@
 
 **Audience**: AI Coding Assistants  
 **Purpose**: Step-by-step guide to migrate frontend code to work with the new Firestore-based backend  
-**Backend Version**: Firestore + GCS migration (December 2025)
+**Backend Version**: Firestore + GCS migration (December 2025)  
+**Production API**: https://veo-api-otfo2ctxma-uc.a.run.app
 
 ---
 
@@ -14,7 +15,7 @@ The backend migrated from file-based storage to **Firestore + Google Cloud Stora
 
 | **Component** | **Old Architecture** | **New Architecture** |
 |---------------|---------------------|---------------------|
-| **Asset Storage** | Local files | GCS bucket (`genmedia-assets`) |
+| **Asset Storage** | Local files | GCS bucket (`genmediastudio-assets`) |
 | **Asset Metadata** | In-memory/JSON | Firestore collection (`assets`) |
 | **Workflows** | Local files | Firestore collection (`workflows`) |
 | **URLs** | Direct blob paths exposed | Signed URLs resolved server-side |

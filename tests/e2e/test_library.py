@@ -28,7 +28,7 @@ class TestLibraryE2E:
         for asset in data["assets"]:
             assert "url" in asset
             if asset["url"]:  # Some assets may not have URLs yet
-                assert "genmedia-assets" in asset["url"]
+                assert "genmediastudio-assets" in asset["url"]
     
     def test_save_and_retrieve_asset(self, api_base_url, auth_headers, http_client, cleanup_asset):
         """Save an asset and retrieve it - verifies Firestore metadata + GCS storage"""
@@ -57,7 +57,7 @@ class TestLibraryE2E:
         # Verify response includes URL (resolved from Firestore metadata)
         assert "url" in saved
         assert saved["url"] is not None
-        assert "genmedia-assets" in saved["url"]
+        assert "genmediastudio-assets" in saved["url"]
         
         # Retrieve metadata from Firestore
         get_response = http_client.get(

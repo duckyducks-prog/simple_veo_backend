@@ -4,8 +4,8 @@ from typing import ClassVar
 class Settings(BaseSettings):
     project_id: str = "genmediastudio"
     location: str = "us-central1"
-    gcs_bucket: str = "genmedia-assets-remarkablenotion"  # Keep existing bucket or create in genmediastudio
-    workflows_bucket: str = "veo-workflows-remarkablenotion"  # Keep existing bucket or create in genmediastudio
+    gcs_bucket: str = "genmediastudio-assets"  
+    workflows_bucket: str = "genmediastudio-workflows"
     firebase_project_id: str = "genmediastudio"
     
     # Hardcoded, not from env
