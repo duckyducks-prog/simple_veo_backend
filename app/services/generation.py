@@ -8,7 +8,7 @@ from google.genai import types
 from typing import Optional, List
 from app.config import settings
 from app.schemas import ImageResponse, TextResponse, UpscaleResponse, VideoStatusResponse
-from app.services.library import LibraryService
+from app.services.library_firestore import LibraryServiceFirestore
 from app.logging_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -33,8 +33,8 @@ image_client = genai.Client(
 
 
 class GenerationService:
-    def __init__(self, library_service: Optional[LibraryService] = None):
-        self.library = library_service or LibraryService()
+    def __init__(self, library_service: Optional[LibraryServiceFirestore] = None):
+        self.library = library_service or LibraryServiceFirestore()
     
     def _strip_base64_prefix(self, data: str) -> str:
         """Remove data URL prefix if present"""

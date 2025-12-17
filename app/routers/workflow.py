@@ -8,22 +8,22 @@ from app.schemas import (
     WorkflowMessageResponse
 )
 from app.auth import get_current_user
-from app.services.workflow import WorkflowService
+from app.services.workflow_firestore import WorkflowServiceFirestore
 from app.logging_config import setup_logger
 
 logger = setup_logger(__name__)
 router = APIRouter()
 
 
-def get_workflow_service() -> WorkflowService:
-    return WorkflowService()
+def get_workflow_service() -> WorkflowServiceFirestore:
+    return WorkflowServiceFirestore()
 
 
 @router.post("/save", response_model=WorkflowIdResponse)
 async def save_workflow(
     request: SaveWorkflowRequest,
     user: dict = Depends(get_current_user),
-    service: WorkflowService = Depends(get_workflow_service)
+    service: WorkflowServiceFirestore = Depends(get_workflow_service)
 ):
     """
     Create a new workflow.
@@ -63,7 +63,7 @@ async def save_workflow(
 async def list_workflows(
     scope: str = Query(..., description="Filter scope: 'my' or 'public'"),
     user: dict = Depends(get_current_user),
-    service: WorkflowService = Depends(get_workflow_service)
+    service: WorkflowServiceFirestore = Depends(get_workflow_service)
 ):
     """
     List workflows based on scope.
@@ -98,7 +98,7 @@ async def list_workflows(
 async def get_workflow(
     workflow_id: str,
     user: dict = Depends(get_current_user),
-    service: WorkflowService = Depends(get_workflow_service)
+    service: WorkflowServiceFirestore = Depends(get_workflow_service)
 ):
     """
     Get a specific workflow by ID.
@@ -133,7 +133,7 @@ async def update_workflow(
     workflow_id: str,
     request: UpdateWorkflowRequest,
     user: dict = Depends(get_current_user),
-    service: WorkflowService = Depends(get_workflow_service)
+    service: WorkflowServiceFirestore = Depends(get_workflow_service)
 ):
     """
     Update an existing workflow.
@@ -179,7 +179,7 @@ async def update_workflow(
 async def delete_workflow(
     workflow_id: str,
     user: dict = Depends(get_current_user),
-    service: WorkflowService = Depends(get_workflow_service)
+    service: WorkflowServiceFirestore = Depends(get_workflow_service)
 ):
     """
     Delete a workflow.
@@ -213,7 +213,7 @@ async def delete_workflow(
 async def clone_workflow(
     workflow_id: str,
     user: dict = Depends(get_current_user),
-    service: WorkflowService = Depends(get_workflow_service)
+    service: WorkflowServiceFirestore = Depends(get_workflow_service)
 ):
     """
     Clone an existing workflow.

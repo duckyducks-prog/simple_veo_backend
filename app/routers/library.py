@@ -2,20 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from app.schemas import SaveAssetRequest, AssetResponse, LibraryResponse
 from app.auth import get_current_user
-from app.services.library import LibraryService
+from app.services.library_firestore import LibraryServiceFirestore
 from app.logging_config import setup_logger
 
 logger = setup_logger(__name__)
 router = APIRouter()
 
-def get_library_service() -> LibraryService:
-    return LibraryService()
+def get_library_service() -> LibraryServiceFirestore:
+    return LibraryServiceFirestore()
 
 @router.post("/save", response_model=AssetResponse)
 async def save_asset(
     request: SaveAssetRequest,
     user: dict = Depends(get_current_user),
-    service: LibraryService = Depends(get_library_service)
+    service: LibraryServiceFirestore = Depends(get_library_service)
 ):
     """Save an asset to the library"""
     try:
@@ -39,7 +39,7 @@ async def list_assets(
     asset_type: Optional[str] = None,
     limit: int = 50,
     user: dict = Depends(get_current_user),
-    service: LibraryService = Depends(get_library_service)
+    service: LibraryServiceFirestore = Depends(get_library_service)
 ):
     """List assets for the authenticated user"""
     try:
@@ -57,7 +57,7 @@ async def list_assets(
 async def get_asset(
     asset_id: str,
     user: dict = Depends(get_current_user),
-    service: LibraryService = Depends(get_library_service)
+    service: LibraryServiceFirestore = Depends(get_library_service)
 ):
     """Get a specific asset"""
     try:
@@ -77,7 +77,7 @@ async def get_asset(
 async def delete_asset(
     asset_id: str,
     user: dict = Depends(get_current_user),
-    service: LibraryService = Depends(get_library_service)
+    service: LibraryServiceFirestore = Depends(get_library_service)
 ):
     """Delete an asset"""
     try:

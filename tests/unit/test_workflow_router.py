@@ -2,7 +2,7 @@
 Unit tests for workflow router
 """
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock, Mock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI, HTTPException
 from app.routers import workflow
@@ -19,13 +19,14 @@ class TestWorkflowServiceFactory:
     """Test the workflow service factory function"""
     
     def test_get_workflow_service_returns_instance(self):
-        """Verify get_workflow_service returns a WorkflowService instance"""
+        """Verify get_workflow_service returns a WorkflowServiceFirestore instance"""
         from app.routers.workflow import get_workflow_service
-        from app.services.workflow import WorkflowService
+        from app.services.workflow_firestore import WorkflowServiceFirestore
         
-        with patch('app.services.workflow.storage.Client'):
+        with patch('app.services.workflow_firestore.get_firestore_client') as mock_fs:
+            mock_fs.return_value.collection.return_value = Mock()
             service = get_workflow_service()
-            assert isinstance(service, WorkflowService)
+            assert isinstance(service, WorkflowServiceFirestore)
 
 
 @pytest.fixture
