@@ -427,7 +427,7 @@ class TestLibraryServiceFirestoreURLResolution:
         assert "asset2" in result
         assert result["asset1"]["exists"] == True
         assert result["asset1"]["url"] is not None
-        assert "genmedia-assets-remarkablenotion" in result["asset1"]["url"]
+        assert "genmediastudio-assets" in result["asset1"]["url"]
     
     async def test_resolve_asset_urls_missing_assets(self, mock_firestore_client, mock_gcs):
         """Test handling missing assets in batch"""

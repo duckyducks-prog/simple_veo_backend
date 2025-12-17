@@ -1,5 +1,8 @@
 # Firestore Migration Guide
 
+**Status**: ✅ COMPLETED - December 2025  
+**Note**: This document describes the completed migration. For current setup, see main README.
+
 ## Overview
 Successfully migrated from GCS-only storage to a Firestore + GCS hybrid architecture.
 

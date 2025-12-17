@@ -56,7 +56,7 @@ uv run pytest tests/e2e/ --run-e2e -v
 
 4. **Cloud Access**: Ensure you have access to:
    - Firebase project: `genmediastudio`
-   - GCS bucket: `genmedia-assets-remarkablenotion`
+   - GCS bucket: `genmediastudio-assets`
    - Firestore collections: `workflows`, `assets`
 
 ## Running E2E Tests
@@ -72,7 +72,7 @@ export API_URL="http://localhost:8000"
 uv run pytest tests/e2e/ --run-e2e -v
 
 # Run against production (Cloud Run)
-export API_URL="https://veo-api-82187245577.us-central1.run.app"
+export API_URL="https://veo-api-otfo2ctxma-uc.a.run.app"
 uv run pytest tests/e2e/ --run-e2e -v
 
 # Or use defaults (production URL)

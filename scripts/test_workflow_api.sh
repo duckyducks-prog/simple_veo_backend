@@ -13,7 +13,7 @@ if [ -z "$1" ]; then
 fi
 
 TOKEN="$1"
-BASE_URL="https://veo-api-82187245577.us-central1.run.app"
+BASE_URL="https://veo-api-otfo2ctxma-uc.a.run.app"
 
 echo "🧪 Testing Workflow API..."
 echo ""

@@ -421,7 +421,7 @@ class TestWorkflowServiceFirestoreURLResolution:
         resolved = service._resolve_asset_urls(nodes)
         
         assert "imageUrl" in resolved[0]["data"]
-        assert "genmedia-assets-remarkablenotion" in resolved[0]["data"]["imageUrl"]
+        assert "genmediastudio-assets" in resolved[0]["data"]["imageUrl"]
     
     async def test_resolve_asset_urls_missing_asset(self, mock_firestore_client):
         """Test handling missing assets gracefully"""

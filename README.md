@@ -295,7 +295,7 @@ gcloud run deploy veo-api \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars PROJECT_ID=remarkablenotion,LOCATION=us-central1,GCS_BUCKET=genmedia-assets-remarkablenotion,FIREBASE_PROJECT_ID=genmediastudio \
+  --set-env-vars PROJECT_ID=genmediastudio,LOCATION=us-central1,GCS_BUCKET=genmediastudio-assets,FIREBASE_PROJECT_ID=genmediastudio \
   --timeout=300 \
   --memory=1Gi
 ```
@@ -308,8 +308,8 @@ The service will be deployed to a URL like:
 ```bash
 docker build -t veo-api .
 docker run -p 8080:8080 \
-  -e PROJECT_ID=remarkablenotion \
-  -e GCS_BUCKET=genmedia-assets-remarkablenotion \
+  -e PROJECT_ID=genmediastudio \
+  -e GCS_BUCKET=genmediastudio-assets \
   veo-api
 ```
 

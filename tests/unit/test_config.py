@@ -4,7 +4,7 @@ def test_default_settings():
     """Settings load with defaults"""
     from app.config import Settings
     s = Settings()
-    assert s.project_id == "remarkablenotion"
+    assert s.project_id == "genmediastudio"
     assert s.location == "us-central1"
 
 def test_env_override(monkeypatch):

@@ -8,8 +8,8 @@ set -e
 echo "🚀 Setting up Workflow Storage..."
 
 # Configuration
-PROJECT_ID="remarkablenotion"
-BUCKET_NAME="veo-workflows-remarkablenotion"
+PROJECT_ID="genmediastudio"
+BUCKET_NAME="genmediastudio-workflows"
 LOCATION="us-central1"
 SERVICE_ACCOUNT="veo-api-service-account@${PROJECT_ID}.iam.gserviceaccount.com"
 
