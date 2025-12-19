@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 
 # ============== REQUEST MODELS ==============
@@ -17,6 +17,7 @@ class VideoRequest(BaseModel):
     aspect_ratio: Optional[str] = "16:9"
     duration_seconds: Optional[int] = 8
     generate_audio: Optional[bool] = True
+    seed: Optional[int] = None  # For consistent voice/style generation
 
 class TextRequest(BaseModel):
     prompt: str
@@ -71,3 +72,62 @@ class VideoStatusResponse(BaseModel):
 class LibraryResponse(BaseModel):
     assets: List[AssetResponse]
     count: int
+
+# ============== WORKFLOW MODELS ==============
+
+class WorkflowNode(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    
+    id: str
+    type: str
+    position: dict
+    data: dict
+
+class WorkflowEdge(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    
+    id: str
+    source: str
+    target: str
+    sourceHandle: Optional[str] = None
+    targetHandle: Optional[str] = None
+
+class SaveWorkflowRequest(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    is_public: bool = False
+    nodes: List[dict]  # Accept any dict to be flexible
+    edges: List[dict]  # Accept any dict to be flexible
+
+class UpdateWorkflowRequest(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    is_public: bool = False
+    nodes: List[dict]  # Accept any dict to be flexible
+    edges: List[dict]  # Accept any dict to be flexible
+
+class WorkflowResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    
+    id: str
+    name: str
+    description: Optional[str] = ""
+    is_public: bool
+    thumbnail: Optional[str] = None
+    created_at: str
+    updated_at: str
+    user_id: str
+    user_email: str
+    node_count: int
+    edge_count: int
+    nodes: List[dict]  # Flexible to accept any node structure
+    edges: List[dict]  # Flexible to accept any edge structure
+
+class WorkflowListResponse(BaseModel):
+    workflows: List[WorkflowResponse]
+
+class WorkflowIdResponse(BaseModel):
+    id: str
+
+class WorkflowMessageResponse(BaseModel):
+    message: str

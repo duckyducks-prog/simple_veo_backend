@@ -14,7 +14,10 @@ logger = setup_logger(__name__)
 load_dotenv()
 
 # Initialize Firebase Admin
-cred_path = os.environ.get('FIREBASE_SERVICE_ACCOUNT_KEY', 'serviceAccountKey.json')
+# Get project root directory (parent of scripts directory)
+project_root = Path(__file__).parent.parent
+default_key_path = project_root / 'serviceAccountKey.json'
+cred_path = os.environ.get('FIREBASE_SERVICE_ACCOUNT_KEY', str(default_key_path))
 
 if os.path.exists(cred_path):
     cred = credentials.Certificate(cred_path)

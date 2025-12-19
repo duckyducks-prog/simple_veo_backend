@@ -1,5 +1,6 @@
 import base64
 import httpx
+import asyncio
 import google.auth
 import google.auth.transport.requests
 from google import genai
@@ -7,10 +8,15 @@ from google.genai import types
 from typing import Optional, List
 from app.config import settings
 from app.schemas import ImageResponse, TextResponse, UpscaleResponse, VideoStatusResponse
-from app.services.library import LibraryService
+from app.services.library_firestore import LibraryServiceFirestore
 from app.logging_config import setup_logger
 
 logger = setup_logger(__name__)
+
+# Retry configuration
+MAX_RETRIES = 5
+INITIAL_RETRY_DELAY = 5  # seconds (longer initial delay)
+MAX_RETRY_DELAY = 60  # seconds
 
 # Initialize the client
 client = genai.Client(
@@ -22,13 +28,13 @@ client = genai.Client(
 image_client = genai.Client(
     vertexai=True,
     project=settings.project_id,
-    location="global"  # Image models use global
+    location="us-central1"  # Gemini image models
 )
 
 
 class GenerationService:
-    def __init__(self, library_service: Optional[LibraryService] = None):
-        self.library = library_service or LibraryService()
+    def __init__(self, library_service: Optional[LibraryServiceFirestore] = None):
+        self.library = library_service or LibraryServiceFirestore()
     
     def _strip_base64_prefix(self, data: str) -> str:
         """Remove data URL prefix if present and ensure valid base64 padding"""
@@ -55,6 +61,29 @@ class GenerationService:
             "Authorization": f"Bearer {credentials.token}",
             "Content-Type": "application/json"
         }
+    
+    async def _retry_with_backoff(self, operation, operation_name: str):
+        """Execute an operation with exponential backoff retry on rate limit errors"""
+        last_exception = None
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                return await operation()
+            except Exception as e:
+                error_str = str(e)
+                # Check if it's a rate limit error (429)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    delay = min(INITIAL_RETRY_DELAY * (2 ** attempt), MAX_RETRY_DELAY)
+                    logger.warning(f"{operation_name}: Rate limited (attempt {attempt + 1}/{MAX_RETRIES}). Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                    last_exception = e
+                else:
+                    # Not a rate limit error, raise immediately
+                    raise
+        
+        # All retries exhausted
+        logger.error(f"{operation_name}: All {MAX_RETRIES} retries exhausted")
+        raise last_exception
 
     async def generate_image(
         self,
@@ -64,9 +93,9 @@ class GenerationService:
         aspect_ratio: str = "1:1",
         resolution: str = "1K"
     ) -> ImageResponse:
-        """Generate images using Gemini"""
-        contents = []
+        """Generate images using Gemini with retry on rate limits"""
         
+<<<<<<< HEAD
         if reference_images:
             for ref_image in reference_images:
                 clean_image = self._strip_base64_prefix(ref_image)
@@ -84,17 +113,87 @@ class GenerationService:
                     aspect_ratio=aspect_ratio,
                     image_size=resolution
                 )
+=======
+        async def _do_generate():
+            contents = []
+            
+            # Add reference images if provided - use as visual ingredients
+            if reference_images:
+                logger.info(f"Processing {len(reference_images)} reference images as ingredients")
+                valid_images = []
+                
+                for i, ref_image in enumerate(reference_images):
+                    try:
+                        clean_image = self._strip_base64_prefix(ref_image)
+                        image_bytes = base64.b64decode(clean_image)
+                        
+                        # Validate image size (Gemini requires reasonable sized images)
+                        if len(image_bytes) < 100:
+                            logger.warning(f"Reference image {i+1} too small ({len(image_bytes)} bytes), skipping")
+                            continue
+                        
+                        # Check for valid PNG/JPEG header
+                        is_png = image_bytes[:8] == b'\x89PNG\r\n\x1a\n'
+                        is_jpeg = image_bytes[:2] == b'\xff\xd8'
+                        
+                        if not (is_png or is_jpeg):
+                            logger.warning(f"Reference image {i+1} has invalid format (not PNG/JPEG), skipping")
+                            continue
+                        
+                        mime_type = "image/png" if is_png else "image/jpeg"
+                        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+                        valid_images.append(i+1)
+                        logger.info(f"Added reference image {i+1}: {len(image_bytes)} bytes, format: {mime_type}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to process reference image {i+1}: {e}")
+                        continue
+                
+                if valid_images:
+                    # Enhanced prompt that treats reference images as ingredients/components
+                    ingredient_prompt = (
+                        f"IMPORTANT: Use the provided reference image(s) as visual ingredients and components. "
+                        f"Extract and incorporate their key visual elements (subjects, objects, colors, textures, style) "
+                        f"into the generated image.\n\n"
+                        f"Generation request: {prompt}\n\n"
+                        f"Create a new image that incorporates visual elements from the reference image(s) "
+                        f"while following the generation request above."
+                    )
+                    contents.append(ingredient_prompt)
+                    logger.info(f"Using {len(valid_images)} valid reference images: {valid_images}")
+                else:
+                    logger.warning("No valid reference images found, generating without references")
+                    contents = [prompt]
+            else:
+                contents.append(prompt)
+            
+            # Build config with appropriate settings
+            config = types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"]
+>>>>>>> firestore-migration
             )
-        )
+            
+            response = image_client.models.generate_content(
+                model=settings.gemini_image_model,
+                contents=contents,
+                config=config
+            )
+            
+            images = []
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    images.append(base64.b64encode(part.inline_data.data).decode())
+            
+            if not images:
+                raise Exception("No images generated")
+            
+            logger.info(f"Generated {len(images)} image(s) successfully")
+            return images
         
-        images = []
-        for part in response.candidates[0].content.parts:
-            if part.inline_data:
-                images.append(base64.b64encode(part.inline_data.data).decode())
+        # Execute with retry
+        images = await self._retry_with_backoff(_do_generate, "Image generation")
         
-        if not images:
-            raise Exception("No images generated")
-        
+        # Save to library (don't retry this part)
         for img_data in images:
             try:
                 await self.library.save_asset(
@@ -117,7 +216,8 @@ class GenerationService:
         reference_images: Optional[List[str]] = None,
         aspect_ratio: str = "16:9",
         duration_seconds: int = 8,
-        generate_audio: bool = True
+        generate_audio: bool = True,
+        seed: Optional[int] = None
     ) -> dict:
         """Start video generation using Veo via REST API"""
         endpoint = f"https://{settings.location}-aiplatform.googleapis.com/v1/projects/{settings.project_id}/locations/{settings.location}/publishers/google/models/{settings.veo_model}:predictLongRunning"
@@ -125,10 +225,14 @@ class GenerationService:
         instance = {"prompt": prompt}
         
         if first_frame:
+            cleaned_frame = self._strip_base64_prefix(first_frame)
+            logger.info(f"Adding first frame to request, original length: {len(first_frame)}, cleaned length: {len(cleaned_frame)}")
             instance["image"] = {
-                "bytesBase64Encoded": self._strip_base64_prefix(first_frame),
+                "bytesBase64Encoded": cleaned_frame,
                 "mimeType": "image/png"
             }
+        else:
+            logger.warning("No first frame provided to generate_video")
         
         if last_frame:
             instance["lastFrame"] = {
@@ -136,6 +240,8 @@ class GenerationService:
                 "mimeType": "image/png"
             }
         
+        # Reference images for subject consistency (Veo 3.1 feature)
+        # Format: uses "image" field (not "referenceImage") and lowercase "style" type
         if reference_images:
             instance["referenceImages"] = [
                 {
@@ -143,7 +249,7 @@ class GenerationService:
                         "bytesBase64Encoded": self._strip_base64_prefix(img),
                         "mimeType": "image/png"
                     },
-                    "referenceType": "REFERENCE_TYPE_SUBJECT"
+                    "referenceType": "style"
                 }
                 for img in reference_images[:3]
             ]
@@ -159,16 +265,37 @@ class GenerationService:
             }
         }
         
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
+        # Add seed if provided for consistent generation (voice, style, etc.)
+        if seed is not None:
+            payload["parameters"]["seed"] = seed
+            logger.info(f"Using seed {seed} for consistent generation")
         
+<<<<<<< HEAD
         if response.status_code == 429:
             raise Exception(f"API error: 429 - Rate limit exceeded. You may have too many concurrent video generations or have reached your daily quota. Please wait a few minutes and try again.")
         
         if response.status_code != 200:
             raise Exception(f"API error: {response.status_code} - {response.text}")
+=======
+        logger.info(f"Veo API request: endpoint={endpoint}, instance_keys={list(instance.keys())}")
         
-        result = response.json()
+        async def _do_video_request():
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(endpoint, json=payload, headers=self._get_auth_headers(), timeout=300.0)
+            
+            if response.status_code == 429:
+                raise Exception(f"429 RESOURCE_EXHAUSTED: {response.text}")
+            
+            if response.status_code != 200:
+                logger.error(f"Veo API error: status={response.status_code}")
+                logger.error(f"Veo API response: {response.text[:1000]}")
+                raise Exception(f"API error: {response.status_code} - {response.text}")
+            
+            return response.json()
+        
+        result = await self._retry_with_backoff(_do_video_request, "Video generation")
+>>>>>>> firestore-migration
+        
         return {
             "status": "processing",
             "operation_name": result.get("name", ""),
@@ -188,18 +315,24 @@ class GenerationService:
             "operationName": operation_name
         }
         
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.post(
-                endpoint, 
-                json=payload, 
-                headers=self._get_auth_headers(), 
-                timeout=60.0
-            )
+        async def _do_status_check():
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(
+                    endpoint, 
+                    json=payload, 
+                    headers=self._get_auth_headers(), 
+                    timeout=60.0
+                )
+            
+            if response.status_code == 429:
+                raise Exception(f"429 RESOURCE_EXHAUSTED: {response.text}")
+            
+            if response.status_code != 200:
+                raise Exception(f"API error: {response.status_code} - {response.text}")
+            
+            return response.json()
         
-        if response.status_code != 200:
-            raise Exception(f"API error: {response.status_code} - {response.text}")
-        
-        result = response.json()
+        result = await self._retry_with_backoff(_do_status_check, "Video status check")
         
         if result.get("done"):
             if "response" in result:

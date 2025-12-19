@@ -13,7 +13,7 @@ class TestImageGenerationAPI:
     
     @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_requires_prompt(self, mock_storage, mock_genai_client, mock_image_client, client, mock_auth, mock_gcs_client):
         """Request without prompt returns 422"""
         mock_storage.return_value = mock_gcs_client
@@ -23,7 +23,7 @@ class TestImageGenerationAPI:
     
     @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_successful_generation(
         self, 
         mock_storage, 
@@ -59,7 +59,7 @@ class TestImageGenerationAPI:
     
     @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_with_reference_images(
         self,
         mock_storage,
@@ -94,7 +94,7 @@ class TestImageGenerationAPI:
     
     @patch("app.services.generation.image_client")
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_no_images_returns_500(
         self,
         mock_storage,
@@ -129,7 +129,7 @@ class TestVideoGenerationAPI:
     
     @patch("app.services.generation.httpx.AsyncClient")
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_returns_operation_name(
         self,
         mock_storage,
@@ -175,7 +175,7 @@ class TestVideoStatusAPI:
     
     @patch("app.services.generation.httpx.AsyncClient")
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_returns_complete_with_video(
         self,
         mock_storage,
@@ -212,7 +212,7 @@ class TestTextGenerationAPI:
     """Integration tests for /generate/text endpoint"""
     
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_successful_generation(
         self,
         mock_storage,
@@ -235,7 +235,7 @@ class TestTextGenerationAPI:
         assert response.json()["response"] == "Generated text response"
     
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_with_system_prompt(
         self,
         mock_storage,
@@ -271,7 +271,7 @@ class TestUpscaleAPI:
     
     @patch("app.services.generation.httpx.AsyncClient")
     @patch("app.services.generation.client")
-    @patch("app.services.library.storage.Client")
+    @patch("app.services.library_firestore.storage.Client")
     def test_successful_upscale(
         self,
         mock_storage,

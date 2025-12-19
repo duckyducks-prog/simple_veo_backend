@@ -94,3 +94,106 @@ class TestVideoGenerationE2E:
         )
         
         assert response.status_code == 401
+
+
+@pytest.mark.e2e
+class TestVideoGenerationWithSeedE2E:
+    """E2E tests for video generation with seed data for reproducibility"""
+    
+    def test_video_generation_with_seed_parameter(self, api_base_url, auth_headers, http_client, seed_values):
+        """Verify seed parameter is accepted in video generation request"""
+        seed_value = seed_values["seed_1"]
+        
+        response = http_client.post(
+            f"{api_base_url}/generate/video",
+            headers=auth_headers,
+            json={
+                "prompt": "a simple animation with consistent style",
+                "seed": seed_value,
+                "duration_seconds": 4,
+                "aspect_ratio": "16:9"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify generation started successfully with seed
+        assert data["status"] == "processing"
+        assert "operation_name" in data
+        print(f"✓ Video generation with seed {seed_value} started: {data['operation_name']}")
+    
+    def test_video_generation_with_zero_seed(self, api_base_url, auth_headers, http_client, seed_values):
+        """Verify zero seed value is handled correctly"""
+        response = http_client.post(
+            f"{api_base_url}/generate/video",
+            headers=auth_headers,
+            json={
+                "prompt": "test animation",
+                "seed": seed_values["seed_zero"],
+                "duration_seconds": 4,
+                "aspect_ratio": "16:9"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "processing"
+        print(f"✓ Video generation with seed 0 accepted")
+    
+    def test_video_generation_with_large_seed(self, api_base_url, auth_headers, http_client):
+        """Verify large seed values are handled correctly"""
+        large_seed = 2147483647  # Max 32-bit signed int
+        
+        response = http_client.post(
+            f"{api_base_url}/generate/video",
+            headers=auth_headers,
+            json={
+                "prompt": "test animation",
+                "seed": large_seed,
+                "duration_seconds": 4,
+                "aspect_ratio": "16:9"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "processing"
+        print(f"✓ Video generation with large seed {large_seed} accepted")
+    
+    def test_video_generation_without_seed(self, api_base_url, auth_headers, http_client):
+        """Verify video generation still works when seed is not provided (randomized)"""
+        response = http_client.post(
+            f"{api_base_url}/generate/video",
+            headers=auth_headers,
+            json={
+                "prompt": "random style animation",
+                "duration_seconds": 4,
+                "aspect_ratio": "16:9"
+                # No seed provided - should use random generation
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "processing"
+        print(f"✓ Video generation without seed (randomized) started")
+    
+    def test_video_generation_with_null_seed(self, api_base_url, auth_headers, http_client):
+        """Verify null seed is treated as no seed (randomized generation)"""
+        response = http_client.post(
+            f"{api_base_url}/generate/video",
+            headers=auth_headers,
+            json={
+                "prompt": "animation",
+                "seed": None,
+                "duration_seconds": 4,
+                "aspect_ratio": "16:9"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "processing"
+        print(f"✓ Video generation with null seed accepted")
+

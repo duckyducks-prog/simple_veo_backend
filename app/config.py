@@ -2,9 +2,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import ClassVar
 
 class Settings(BaseSettings):
-    project_id: str = "remarkablenotion"
+    project_id: str = "genmediastudio"
     location: str = "us-central1"
-    gcs_bucket: str = "genmedia-assets-remarkablenotion"
+    gcs_bucket: str = "genmediastudio-assets"  
+    workflows_bucket: str = "genmediastudio-workflows"
     firebase_project_id: str = "genmediastudio"
     
     # Hardcoded, not from env
