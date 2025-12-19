@@ -316,9 +316,15 @@ simple_veo_backend/
 ### Configuration
 
 Edit `app/config.py` to modify:
-- **Model versions** - Update AI model names
+- **Model versions** - Update AI model names (Gemini 2.5, Veo 3.1, Imagen 4.0)
 - **Allowed emails** - Add/remove authorized users
-- **Default settings** - Project IDs, regions, etc.
+- **Default settings** - Project IDs, regions, buckets, etc.
+
+**Current models:**
+- Image: `gemini-2.5-flash-image`
+- Video: `veo-3.1-generate-preview`
+- Text: `gemini-3-flash-preview`
+- Upscale: `imagen-4.0-upscale-preview`
 
 ### Logging
 
@@ -501,6 +507,9 @@ uv run uvicorn app.main:app --port 8080
 
 ## 📖 Additional Documentation
 
+- **[Firestore Migration](documentation/FIRESTORE_MIGRATION.md)** - Guide to Firestore integration
+- **[Workflow API](documentation/WORKFLOW_API.md)** - Workflow endpoints and schemas
+- **[Workflow Quickstart](documentation/WORKFLOW_QUICKSTART.md)** - Getting started with workflows
 - **[Logging Guide](README_LOGGING.md)** - Comprehensive logging documentation
 - **[API Docs](http://localhost:8080/docs)** - Interactive API documentation (when server is running)
 
@@ -544,12 +553,15 @@ For questions or issues:
 |------|---------|
 | Install dependencies | `uv sync` |
 | Start server | `uv run uvicorn app.main:app --reload --port 8080` |
+| Run all e2e tests | `./scripts/run_e2e_tests.sh` |
+| Run specific test | `./scripts/run_e2e_tests.sh tests/e2e/test_video_generation.py` |
 | Run all tests | `uv run pytest` |
 | Run unit tests | `uv run pytest tests/unit -v` |
 | Generate test token | `uv run python scripts/get_test_token.py` |
 | View test coverage | `uv run pytest --cov=app --cov-report=html` |
-| Deploy to Cloud Run | See Deployment section above |
+| Deploy to Cloud Run | `./scripts/deploy.sh` |
 | Check health | `curl http://localhost:8080/health` |
 | View API docs | Open http://localhost:8080/docs |
+| Test workflow API | `./scripts/test_workflow_api.sh` |
 
 ---
