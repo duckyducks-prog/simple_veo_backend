@@ -4,6 +4,21 @@ These tests validate the complete backend functionality with real cloud services
 
 ## Quick Setup
 
+### Using the automated script (recommended):
+
+```bash
+# Run against LOCAL server (automatically starts server)
+LOCAL_MODE=true ./scripts/run_e2e_tests.sh
+
+# Run against PRODUCTION server
+./scripts/run_e2e_tests.sh
+
+# Run with custom API URL
+API_URL="http://localhost:9000" ./scripts/run_e2e_tests.sh
+```
+
+### Manual setup:
+
 ```bash
 # 1. Copy environment template
 cp .env.example .env
@@ -14,18 +29,13 @@ cp .env.example .env
 # 3. Edit .env and add your FIREBASE_API_KEY
 #    Find in: Project Settings > General > Web API Key
 
-# 4. Generate test token
-python scripts/get_test_token.py
+# 4. Start local server (if testing locally)
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-# 5. Export the token (copy the JWT token from script output)
-export FIREBASE_TEST_TOKEN="<paste-jwt-token-here>"
-
-# 6. Run tests against local server
+# 5. In another terminal, generate test token and run tests
+export FIREBASE_TEST_TOKEN=$(uv run python scripts/get_test_token.py)
 export API_URL="http://localhost:8000"
 uv run pytest tests/e2e/ --run-e2e -v
-
-# Or against production (default)
-# uv run pytest tests/e2e/ --run-e2e -v
 ```
 
 ## Prerequisites
@@ -61,13 +71,31 @@ uv run pytest tests/e2e/ --run-e2e -v
 
 ## Running E2E Tests
 
-E2E tests are skipped by default. Use the `--run-e2e` flag to execute them:
+E2E tests are skipped by default. Use the `--run-e2e` flag to execute them.
+
+### Quick Start (Automated):
+
+```bash
+# Test against local server (auto-starts server)
+LOCAL_MODE=true ./scripts/run_e2e_tests.sh
+
+# Test against production
+./scripts/run_e2e_tests.sh
+
+# Run specific test file
+LOCAL_MODE=true ./scripts/run_e2e_tests.sh tests/e2e/test_workflow.py
+
+# Run with additional pytest options
+LOCAL_MODE=true ./scripts/run_e2e_tests.sh -k "seed"
+```
+
+### Manual Mode:
 
 ```bash
 # Set required environment variables
-export FIREBASE_TEST_TOKEN="<your-jwt-token>"
+export FIREBASE_TEST_TOKEN=$(uv run python scripts/get_test_token.py)
 
-# Run against local server (default port 8000)
+# Run against local server (start server separately)
 export API_URL="http://localhost:8000"
 uv run pytest tests/e2e/ --run-e2e -v
 
@@ -83,6 +111,12 @@ uv run pytest tests/e2e/test_workflow.py --run-e2e -v
 
 # Run specific test
 uv run pytest tests/e2e/test_workflow.py::TestWorkflowE2E::test_workflow_crud_lifecycle --run-e2e -v
+
+# Run tests matching pattern
+uv run pytest tests/e2e -k "seed" --run-e2e -v
+
+# Run with verbose output for debugging
+uv run pytest tests/e2e/ --run-e2e -vv -s
 ```
 
 ## Test Coverage
@@ -103,6 +137,13 @@ uv run pytest tests/e2e/test_workflow.py::TestWorkflowE2E::test_workflow_crud_li
 - `test_generated_image_auto_saves_to_library` - Generation service auto-saves to Firestore
 - `test_workflow_with_multiple_assets` - Batch URL resolution for multiple assets
 
+**TestWorkflowSeedDataE2E**:
+- `test_workflow_with_seed_in_generation_node` - Seed data in video generation nodes
+- `test_workflow_with_multiple_seeded_nodes` - Multiple nodes with different seeds
+- `test_workflow_with_seed_and_asset_references` - Combined seed data and asset refs
+- `test_workflow_clone_preserves_seed_data` - Cloning preserves seed values
+- `test_workflow_update_preserves_seed_data` - Updates preserve seed values
+
 ### Library Tests (`test_library.py`)
 
 **TestLibraryE2E**:
@@ -115,6 +156,38 @@ uv run pytest tests/e2e/test_workflow.py::TestWorkflowE2E::test_workflow_crud_li
 **TestLibraryFirestoreIntegration**:
 - `test_firestore_metadata_persistence` - Verify all metadata fields stored
 - `test_gcs_blob_storage` - Verify binary data stored in GCS, not Firestore
+
+**TestLibrarySeedDataE2E**:
+- `test_save_asset_with_seed` - Save asset with seed metadata to Firestore
+- `test_save_asset_with_different_seed_values` - Various seed values (0, small, large)
+- `test_save_asset_without_seed` - Backward compatibility without seed
+- `test_save_asset_with_null_seed` - Null seed handling
+- `test_save_asset_with_seed_and_additional_metadata` - Complex metadata with seed
+- `test_list_library_with_seed_data` - Verify seed persists in listings
+
+### Video Generation Tests (`test_video_generation.py`)
+
+**TestVideoGenerationE2E**:
+- `test_generate_video_with_polling` - Full video generation flow
+- `test_unauthorized_video_request` - Auth validation
+
+**TestVideoGenerationWithSeedE2E**:
+- `test_video_generation_with_seed_parameter` - Seed accepted in request
+- `test_video_generation_with_zero_seed` - Zero seed handling
+- `test_video_generation_with_large_seed` - Large seed values
+- `test_video_generation_without_seed` - Randomized generation
+- `test_video_generation_with_null_seed` - Null seed handling
+
+### Image Generation Tests (`test_image_generation.py`)
+
+**TestImageGenerationE2E**:
+- `test_generate_simple_image` - Basic image generation
+- `test_unauthorized_request` - Auth validation
+- `test_missing_prompt` - Validation errors
+
+**TestImageGenerationWithSeedE2E**:
+- `test_image_generation_accepts_seed_parameter` - Seed parameter validation
+- `test_image_generation_different_aspect_ratios` - Multiple aspect ratios
 
 ### Other E2E Tests
 - `test_health.py` - Health endpoint validation

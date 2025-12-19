@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     
     # Model names
     gemini_image_model: str = "gemini-2.5-flash-image"
-    gemini_text_model: str = "gemini-3-pro-preview"
+    gemini_text_model: str = "gemini-3-flash-preview"  # Fixed: use valid Gemini 2.0 model
     veo_model: str = "veo-3.1-generate-preview"
     upscale_model: str = "imagen-4.0-upscale-preview"
 

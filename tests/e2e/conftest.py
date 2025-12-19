@@ -73,3 +73,91 @@ def cleanup_asset(api_base_url, auth_headers, http_client):
             )
         except Exception:
             pass  # Best effort cleanup
+
+# ============== SEED DATA FIXTURES ==============
+
+@pytest.fixture
+def seed_values():
+    """Predefined seed values for testing consistent generation"""
+    return {
+        "seed_1": 42,
+        "seed_2": 12345,
+        "seed_3": 999,
+        "seed_4": 1,
+        "seed_zero": 0,
+    }
+
+@pytest.fixture
+def video_generation_with_seed():
+    """Template for video generation with seed data"""
+    def _create(seed=None, prompt="a simple test animation"):
+        return {
+            "prompt": prompt,
+            "aspect_ratio": "16:9",
+            "duration_seconds": 4,
+            "generate_audio": True,
+            "seed": seed
+        }
+    return _create
+
+@pytest.fixture
+def image_generation_with_seed():
+    """Template for image generation with seed data"""
+    def _create(seed=None, prompt="a simple test image"):
+        return {
+            "prompt": prompt,
+            "aspect_ratio": "1:1",
+            "seed": seed
+        }
+    return _create
+
+@pytest.fixture
+def library_asset_with_seed():
+    """Template for creating library assets with seed metadata"""
+    import base64
+    # Create a minimal valid PNG (1x1 red pixel)
+    png_data = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+    )
+    test_data = base64.b64encode(png_data).decode()
+    
+    def _create(seed=None, asset_type="image", prompt="test asset"):
+        payload = {
+            "data": test_data,
+            "asset_type": asset_type,
+            "prompt": prompt
+        }
+        if seed is not None:
+            payload["seed"] = seed
+        return payload
+    
+    return _create
+
+@pytest.fixture
+def workflow_with_seed_generation():
+    """Template for workflow with seed data in generation nodes"""
+    def _create(seed=None):
+        workflow = {
+            "name": "Seed Test Workflow",
+            "description": "Testing seed data in workflow generation",
+            "is_public": False,
+            "nodes": [
+                {
+                    "id": "video-gen-1",
+                    "type": "videoGeneration",
+                    "position": {"x": 0, "y": 0},
+                    "data": {
+                        "prompt": "workflow test animation",
+                        "duration_seconds": 4,
+                        "aspect_ratio": "16:9"
+                    }
+                }
+            ],
+            "edges": []
+        }
+        # Add seed to node data if provided
+        if seed is not None:
+            workflow["nodes"][0]["data"]["seed"] = seed
+        return workflow
+    
+    return _create

@@ -17,6 +17,7 @@ class VideoRequest(BaseModel):
     aspect_ratio: Optional[str] = "16:9"
     duration_seconds: Optional[int] = 8
     generate_audio: Optional[bool] = True
+    seed: Optional[int] = None  # For consistent voice/style generation
 
 class TextRequest(BaseModel):
     prompt: str

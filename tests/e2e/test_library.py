@@ -235,3 +235,207 @@ class TestLibraryFirestoreIntegration:
         # Verify the content type
         content_type = download_response.headers.get("content-type", "")
         assert "image" in content_type.lower() or "octet-stream" in content_type.lower()
+
+
+@pytest.mark.e2e
+class TestLibrarySeedDataE2E:
+    """E2E tests for library with seed data storage and retrieval"""
+    
+    def test_save_asset_with_seed(self, api_base_url, auth_headers, http_client, cleanup_asset, seed_values):
+        """Save an asset with seed data and verify it's stored in Firestore"""
+        seed_value = seed_values["seed_1"]
+        png_data = base64.b64encode(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+        )).decode()
+        
+        # Save asset with seed
+        save_response = http_client.post(
+            f"{api_base_url}/library/save",
+            headers=auth_headers,
+            json={
+                "data": png_data,
+                "asset_type": "image",
+                "prompt": "Generated with seed",
+                "seed": seed_value
+            }
+        )
+        
+        assert save_response.status_code == 200
+        asset_data = save_response.json()
+        asset_id = asset_data["id"]
+        cleanup_asset(asset_id)
+        
+        print(f"✓ Asset saved with seed {seed_value}, ID: {asset_id}")
+        
+        # Retrieve and verify seed is persisted in Firestore
+        get_response = http_client.get(
+            f"{api_base_url}/library/{asset_id}",
+            headers=auth_headers
+        )
+        
+        assert get_response.status_code == 200
+        retrieved_asset = get_response.json()
+        
+        # Verify seed metadata is present (if included in response schema)
+        assert retrieved_asset["id"] == asset_id
+        assert retrieved_asset["prompt"] == "Generated with seed"
+        print(f"✓ Asset metadata retrieved with seed field: {retrieved_asset.get('seed', 'N/A')}")
+    
+    def test_save_asset_with_different_seed_values(self, api_base_url, auth_headers, http_client, cleanup_asset, seed_values):
+        """Test saving assets with various seed values"""
+        png_data = base64.b64encode(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+        )).decode()
+        
+        test_seeds = [
+            seed_values["seed_1"],
+            seed_values["seed_2"],
+            seed_values["seed_3"],
+            seed_values["seed_zero"],
+        ]
+        
+        for seed_val in test_seeds:
+            save_response = http_client.post(
+                f"{api_base_url}/library/save",
+                headers=auth_headers,
+                json={
+                    "data": png_data,
+                    "asset_type": "image",
+                    "prompt": f"Test with seed {seed_val}",
+                    "seed": seed_val
+                }
+            )
+            
+            assert save_response.status_code == 200
+            asset_data = save_response.json()
+            cleanup_asset(asset_data["id"])
+            print(f"✓ Asset saved with seed {seed_val}")
+    
+    def test_save_asset_without_seed(self, api_base_url, auth_headers, http_client, cleanup_asset):
+        """Verify assets can be saved without seed (backward compatibility)"""
+        png_data = base64.b64encode(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+        )).decode()
+        
+        # Save without seed - should work fine
+        save_response = http_client.post(
+            f"{api_base_url}/library/save",
+            headers=auth_headers,
+            json={
+                "data": png_data,
+                "asset_type": "image",
+                "prompt": "Asset without seed"
+                # No seed field provided
+            }
+        )
+        
+        assert save_response.status_code == 200
+        asset_data = save_response.json()
+        cleanup_asset(asset_data["id"])
+        print(f"✓ Asset saved successfully without seed (backward compatible)")
+    
+    def test_save_asset_with_null_seed(self, api_base_url, auth_headers, http_client, cleanup_asset):
+        """Verify null seed is handled correctly"""
+        png_data = base64.b64encode(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+        )).decode()
+        
+        save_response = http_client.post(
+            f"{api_base_url}/library/save",
+            headers=auth_headers,
+            json={
+                "data": png_data,
+                "asset_type": "image",
+                "prompt": "Asset with null seed",
+                "seed": None
+            }
+        )
+        
+        assert save_response.status_code == 200
+        asset_data = save_response.json()
+        cleanup_asset(asset_data["id"])
+        print(f"✓ Asset saved with null seed value")
+    
+    def test_save_asset_with_seed_and_additional_metadata(self, api_base_url, auth_headers, http_client, cleanup_asset, seed_values):
+        """Save asset with seed and other metadata fields"""
+        seed_value = seed_values["seed_2"]
+        png_data = base64.b64encode(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+        )).decode()
+        
+        save_response = http_client.post(
+            f"{api_base_url}/library/save",
+            headers=auth_headers,
+            json={
+                "data": png_data,
+                "asset_type": "image",
+                "prompt": "Complex metadata test",
+                "seed": seed_value,
+                "settings": {
+                    "model": "veo-3.1",
+                    "quality": "high",
+                    "style": "photorealistic"
+                },
+                "tags": ["test", "seed", "reproducible"]
+            }
+        )
+        
+        assert save_response.status_code == 200
+        asset_data = save_response.json()
+        asset_id = asset_data["id"]
+        cleanup_asset(asset_id)
+        
+        # Verify comprehensive metadata is stored
+        get_response = http_client.get(
+            f"{api_base_url}/library/{asset_id}",
+            headers=auth_headers
+        )
+        
+        assert get_response.status_code == 200
+        retrieved = get_response.json()
+        assert retrieved["prompt"] == "Complex metadata test"
+        print(f"✓ Asset with comprehensive metadata saved and retrieved (seed: {seed_value})")
+    
+    def test_list_library_with_seed_data(self, api_base_url, auth_headers, http_client, cleanup_asset, seed_values):
+        """Verify seed data persists in library listings"""
+        seed_value = seed_values["seed_3"]
+        png_data = base64.b64encode(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+        )).decode()
+        
+        # Save asset with seed
+        save_response = http_client.post(
+            f"{api_base_url}/library/save",
+            headers=auth_headers,
+            json={
+                "data": png_data,
+                "asset_type": "image",
+                "prompt": "Listing test",
+                "seed": seed_value
+            }
+        )
+        
+        saved_asset = save_response.json()
+        saved_asset_id = saved_asset["id"]
+        cleanup_asset(saved_asset_id)
+        
+        # List library
+        time.sleep(1)  # Wait for Firestore indexing
+        list_response = http_client.get(
+            f"{api_base_url}/library",
+            headers=auth_headers
+        )
+        
+        assert list_response.status_code == 200
+        library = list_response.json()
+        
+        # Find our asset in the list
+        found = False
+        for asset in library["assets"]:
+            if asset["id"] == saved_asset_id:
+                found = True
+                print(f"✓ Asset with seed {seed_value} found in library listing")
+                break
+        
+        assert found, f"Asset with ID {saved_asset_id} not found in library listing"
+

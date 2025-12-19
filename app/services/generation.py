@@ -86,23 +86,65 @@ class GenerationService:
         async def _do_generate():
             contents = []
             
-            # Add reference images if provided
+            # Add reference images if provided - use as visual ingredients
             if reference_images:
-                for ref_image in reference_images:
-                    clean_image = self._strip_base64_prefix(ref_image)
-                    image_bytes = base64.b64decode(clean_image)
-                    contents.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
-                # Add instruction to use the reference image
-                contents.append(f"Using the provided reference image(s) as a style and subject guide, generate a new image with this description: {prompt}")
+                logger.info(f"Processing {len(reference_images)} reference images as ingredients")
+                valid_images = []
+                
+                for i, ref_image in enumerate(reference_images):
+                    try:
+                        clean_image = self._strip_base64_prefix(ref_image)
+                        image_bytes = base64.b64decode(clean_image)
+                        
+                        # Validate image size (Gemini requires reasonable sized images)
+                        if len(image_bytes) < 100:
+                            logger.warning(f"Reference image {i+1} too small ({len(image_bytes)} bytes), skipping")
+                            continue
+                        
+                        # Check for valid PNG/JPEG header
+                        is_png = image_bytes[:8] == b'\x89PNG\r\n\x1a\n'
+                        is_jpeg = image_bytes[:2] == b'\xff\xd8'
+                        
+                        if not (is_png or is_jpeg):
+                            logger.warning(f"Reference image {i+1} has invalid format (not PNG/JPEG), skipping")
+                            continue
+                        
+                        mime_type = "image/png" if is_png else "image/jpeg"
+                        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+                        valid_images.append(i+1)
+                        logger.info(f"Added reference image {i+1}: {len(image_bytes)} bytes, format: {mime_type}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to process reference image {i+1}: {e}")
+                        continue
+                
+                if valid_images:
+                    # Enhanced prompt that treats reference images as ingredients/components
+                    ingredient_prompt = (
+                        f"IMPORTANT: Use the provided reference image(s) as visual ingredients and components. "
+                        f"Extract and incorporate their key visual elements (subjects, objects, colors, textures, style) "
+                        f"into the generated image.\n\n"
+                        f"Generation request: {prompt}\n\n"
+                        f"Create a new image that incorporates visual elements from the reference image(s) "
+                        f"while following the generation request above."
+                    )
+                    contents.append(ingredient_prompt)
+                    logger.info(f"Using {len(valid_images)} valid reference images: {valid_images}")
+                else:
+                    logger.warning("No valid reference images found, generating without references")
+                    contents = [prompt]
             else:
                 contents.append(prompt)
+            
+            # Build config with appropriate settings
+            config = types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"]
+            )
             
             response = image_client.models.generate_content(
                 model=settings.gemini_image_model,
                 contents=contents,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"]
-                )
+                config=config
             )
             
             images = []
@@ -113,6 +155,7 @@ class GenerationService:
             if not images:
                 raise Exception("No images generated")
             
+            logger.info(f"Generated {len(images)} image(s) successfully")
             return images
         
         # Execute with retry
@@ -141,7 +184,8 @@ class GenerationService:
         reference_images: Optional[List[str]] = None,
         aspect_ratio: str = "16:9",
         duration_seconds: int = 8,
-        generate_audio: bool = True
+        generate_audio: bool = True,
+        seed: Optional[int] = None
     ) -> dict:
         """Start video generation using Veo via REST API"""
         endpoint = f"https://{settings.location}-aiplatform.googleapis.com/v1/projects/{settings.project_id}/locations/{settings.location}/publishers/google/models/{settings.veo_model}:predictLongRunning"
@@ -149,10 +193,14 @@ class GenerationService:
         instance = {"prompt": prompt}
         
         if first_frame:
+            cleaned_frame = self._strip_base64_prefix(first_frame)
+            logger.info(f"Adding first frame to request, original length: {len(first_frame)}, cleaned length: {len(cleaned_frame)}")
             instance["image"] = {
-                "bytesBase64Encoded": self._strip_base64_prefix(first_frame),
+                "bytesBase64Encoded": cleaned_frame,
                 "mimeType": "image/png"
             }
+        else:
+            logger.warning("No first frame provided to generate_video")
         
         if last_frame:
             instance["lastFrame"] = {
@@ -161,14 +209,15 @@ class GenerationService:
             }
         
         # Reference images for subject consistency (Veo 3.1 feature)
+        # Format: uses "image" field (not "referenceImage") and lowercase "style" type
         if reference_images:
             instance["referenceImages"] = [
                 {
-                    "referenceImage": {
+                    "image": {
                         "bytesBase64Encoded": self._strip_base64_prefix(img),
                         "mimeType": "image/png"
                     },
-                    "referenceType": "REFERENCE_TYPE_SUBJECT"
+                    "referenceType": "style"
                 }
                 for img in reference_images[:3]
             ]
@@ -183,6 +232,11 @@ class GenerationService:
                 "resolution": "1080p"
             }
         }
+        
+        # Add seed if provided for consistent generation (voice, style, etc.)
+        if seed is not None:
+            payload["parameters"]["seed"] = seed
+            logger.info(f"Using seed {seed} for consistent generation")
         
         logger.info(f"Veo API request: endpoint={endpoint}, instance_keys={list(instance.keys())}")
         
